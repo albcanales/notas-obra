@@ -198,7 +198,7 @@ textarea.field{height:110px;padding:10px 12px;resize:vertical}
     <button class="btn" id="bDalux" hidden><svg class="i"><use href="#i-share"/></svg>Dalux</button>
     <button class="btn" id="bBlank"><svg class="i"><use href="#i-plus"/></svg>En blanco</button>
     <button class="btn pri" id="bImport"><svg class="i"><use href="#i-pdf"/></svg>Importar</button>
-    <input type="file" id="file" multiple accept="application/pdf,.pdf" hidden>
+    <input type="file" id="file" multiple accept="application/pdf,.pdf,application/zip,.zip" hidden>
     <input type="file" id="dirIn" webkitdirectory multiple hidden>
     <input class="search" id="q" placeholder="Buscar plano o código" type="search">
   </div>
@@ -257,6 +257,7 @@ textarea.field{height:110px;padding:10px 12px;resize:vertical}
 
 <script src="lib/pdf.min.js"></script>
 <script src="lib/pdf-lib.min.js"></script>
+<script src="lib/zip.min.js"></script>
 <script>
 (() => {
 'use strict';
@@ -490,10 +491,10 @@ function moveSheet(n){
 }
 /* Clasificación por nombre de archivo */
 const INST_RULES = [
-  ['Climatización', /\b(CLIMA\w*|CLI|HVAC|CLIM|VENT\w*|CALEF\w*|AIRE|EXTRACC\w*)\b/],
+  ['Climatización', /\b(CLIMA\w*|CLI|HVAC|CLIM|VENT\w*|CALEF\w*|AIRE|EXTRACC\w*|CONDUCT\w*|REJILL\w*|DIFUS\w*|UTA|UTAS|FANCOIL\w*|REFRIG\w*)\b/],
   ['Protección contra incendios', /\b(PCI|INC|INCEND\w*|FIRE|ROCIAD\w*|SPK|DETECC\w*|EXTINC\w*|BIE)\b/],
   ['Iluminación', /\b(ILUM\w*|ALUM\w*|LUM\w*|LIGHT\w*|EMERG\w*)\b/],
-  ['Electricidad', /\b(ELEC\w*|ELE|BT|MT|FUERZA|CUADROS?|CGBT|UNIFILAR\w*)\b/],
+  ['Electricidad', /\b(ELEC\w*|ELE|BT|MT|FUERZA|CUADROS?|CGBT|UNIFILAR\w*|BANDEJ\w*|TOMAS|ENCHUF\w*|CANALIZ\w*)\b/],
   ['Fontanería', /\b(FONT\w*|FON|AFS|ACS|AGUA|AF|FONTANER\w*)\b/],
   ['Saneamiento', /\b(SAN|SANEA\w*|PLUV\w*|FECAL\w*|DREN\w*|RESIDUAL\w*)\b/],
   ['Telecomunicaciones y AV', /\b(TEL|TELECO\w*|AV|AUDIOVIS\w*|AUDIO|ICT|DATOS|VOZ|MEGAF\w*)\b/],
@@ -529,7 +530,7 @@ function classify(name){
   zona = [bloque, zona].filter(Boolean).join(' · ');
   return {zona, inst};
 }
-async function importOne(f, obra){
+async function importOne(f, obra, relPath){
   const bytes = await f.arrayBuffer();
   const doc = await loadPdf(bytes);
   const pages = [];
@@ -542,7 +543,7 @@ async function importOne(f, obra){
     await p1.render({canvasContext:x, viewport:vp}).promise; thumb = c.toDataURL('image/jpeg', 0.7);
   } catch(e){}
   doc.destroy();
-  const id = uid(), now = Date.now(), cl = classify(f.webkitRelativePath || f.name);
+  const id = uid(), now = Date.now(), cl = classify(relPath || f.webkitRelativePath || f.name);
   const meta = {id, title:f.name.replace(/\.pdf$/i,''), created:now, updated:now, kind:'pdf', pages, thumb, obra: obra || '', zona:cl.zona, inst:cl.inst, code:codeOf(f.name), rev:revOf(f.name), size:bytes.byteLength};
   if(meta.code){
     for(const o of notes.filter(n => (n.obra || '') === meta.obra && n.code === meta.code && !n.superseded)){
@@ -566,7 +567,8 @@ function chooseObra(n){
     sh.append(h('h2',{}, '¿En qué obra van ' + (n === 1 ? 'este plano' : 'estos ' + n + ' planos') + '?'), m);
   });
 }
-let pendingFiles = [];
+let pendingFiles = [], zipReaders = [];
+async function materialize(it){ if(!it.lazy) return it; const blob = await it.entry.getData(new zip.BlobWriter('application/pdf')); return new File([blob], it.name, {type:'application/pdf'}); }
 async function startImport(files, obra){
   files = [...files];
   const b = document.createElement('div'); b.className = 'busy'; b.innerHTML = '<div></div>'; document.body.appendChild(b);
@@ -576,13 +578,14 @@ async function startImport(files, obra){
     b.firstChild.textContent = files.length > 1 ? 'Importando ' + (k+1) + ' de ' + files.length + '…' : 'Abriendo PDF…';
     const title = files[k].name.replace(/\.pdf$/i,'');
     const same = notes.find(n => (n.obra || '') === (obra || '') && n.title === title);
-    if(same && same.archived && !same.superseded){ try { await restoreFrom(same, files[k]); restored++; } catch(err){ fail.push(files[k].name); } continue; }
+    if(same && same.archived && !same.superseded){ try { await restoreFrom(same, await materialize(files[k])); restored++; } catch(err){ fail.push(files[k].name); } continue; }
     if(same){ dup++; continue; }
     const cd = codeOf(files[k].name), rv = revOf(files[k].name);
     if(cd && notes.some(n => (n.obra || '') === (obra || '') && n.code === cd && !n.superseded && (n.rev ?? -1) > (rv ?? -1))){ oldSkip++; continue; }
-    try { last = await importOne(files[k], obra); ok++; } catch(err){ console.error(err); fail.push(files[k].name); }
+    try { last = await importOne(await materialize(files[k]), obra, files[k].relPath); ok++; } catch(err){ console.error(err); fail.push(files[k].name); }
   }
   b.remove();
+  for(const r of zipReaders.splice(0)) try { await r.close(); } catch(err){}
   if(obra !== curObra && obra) { curObra = obra; prefs.obra = obra; savePrefs(); }
   await refreshLib();
   if(files.length === 1 && last) openNote(last.id);
@@ -656,15 +659,35 @@ async function updSpaceBtn(){ try { const e = await navigator.storage.estimate()
 $('#q').addEventListener('input', renderLib);
 $('#bImport').onclick = () => sheet((sh, close) => {
   sh.append(h('h2',{}, 'Importar planos'), h('div',{class:'menu'},
-    h('button',{onclick:() => { close(); $('#file').click(); }}, svgIcon('i-pdf'), 'Elegir archivos PDF'),
+    h('button',{onclick:() => { close(); $('#file').click(); }}, svgIcon('i-pdf'), 'Elegir archivos PDF o un ZIP'),
     h('button',{onclick:() => { close(); $('#dirIn').click(); }}, svgIcon('i-list'), 'Elegir una carpeta completa (con subcarpetas)')),
-    h('p',{style:'margin-top:12px'}, 'Al elegir archivos puedes coger muchos a la vez: mantén pulsado uno y en el menú elige «Seleccionar todo».'),
+    h('p',{style:'margin-top:12px'}, 'Muchos planos de golpe: descarga la carpeta de OneDrive como ZIP y elige ese único archivo; se importan todos los PDF de dentro, también los de subcarpetas. También puedes mantener pulsado un PDF y elegir «Seleccionar todo».'),
     acts(h('button',{class:'btn', onclick:() => close()}, 'Cancelar')));
 });
 $('#dirIn').onchange = e => handleFiles(e);
 $('#file').onchange = e => handleFiles(e);
 async function handleFiles(e){
-  const files = [...e.target.files].filter(f => /\.pdf$/i.test(f.name) || f.type === 'application/pdf'); e.target.value = '';
+  const raw = [...e.target.files]; e.target.value = '';
+  const files = raw.filter(f => /\.pdf$/i.test(f.name) || f.type === 'application/pdf');
+  const zips = raw.filter(f => /\.zip$/i.test(f.name) || /zip/.test(f.type));
+  if(zips.length){
+    if(!window.zip){ toast('No se pudo cargar el lector de ZIP'); }
+    else {
+      try { zip.configure({useWebWorkers:false}); } catch(err){}
+      const done = busy('Leyendo ZIP…');
+      for(const z of zips){
+        try {
+          const r = new zip.ZipReader(new zip.BlobReader(z)); zipReaders.push(r);
+          for(const en of await r.getEntries()){
+            const p = en.filename || '';
+            if(en.directory || !/\.pdf$/i.test(p) || /(^|\/)(__MACOSX|\.)/.test(p)) continue;
+            files.push({lazy:true, entry:en, name:p.split('/').pop(), relPath:p});
+          }
+        } catch(err){ console.error(err); toast('No se pudo leer «' + z.name + '»'); }
+      }
+      done();
+    }
+  }
   if(!files.length){ toast('No hay PDF en lo que has elegido'); return; }
   let obra = curObra;
   if(!obra && obras.length){ pendingFiles = files; const r = await chooseObra(files.length); if(r == null) return; obra = r; }
