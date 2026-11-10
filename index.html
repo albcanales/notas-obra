@@ -35,7 +35,7 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stro
 
 /* Biblioteca */
 #lib{height:100%;overflow:auto;padding:0 16px calc(24px + env(safe-area-inset-bottom))}
-.lhead{position:sticky;top:0;z-index:2;background:var(--bg);padding:calc(14px + env(safe-area-inset-top)) 0 12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.lhead{padding:calc(14px + env(safe-area-inset-top)) 0 12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 .lhead h1{font-size:22px;margin:0;flex:1 1 100%;letter-spacing:-.01em}
 .lhead .btn{flex:1;justify-content:center}
 .btn{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 14px;border-radius:12px;background:var(--surface);box-shadow:var(--shadow);font-weight:600;font-size:14px}
@@ -44,16 +44,34 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stro
 .search{width:100%;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:0 12px;font:inherit}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;margin-top:6px}
 .card{background:var(--surface);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column;text-align:left}
-.card .th{aspect-ratio:3/4;background:var(--surface2) center/contain no-repeat;border-bottom:1px solid var(--line)}
+.card .th{aspect-ratio:4/3;background:var(--surface2) center/contain no-repeat;border-bottom:1px solid var(--line)}
 .card .meta{display:flex;align-items:center;gap:4px;padding:8px 6px 8px 10px}
 .card .t{flex:1;min-width:0}
-.card .t b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .t b{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;font-size:13.5px;overflow:hidden;word-break:break-word;line-height:1.25}
 .card .t span{font-size:12px;color:var(--muted)}
 .card .more{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:var(--muted)}
 .empty{margin:60px auto;max-width:340px;text-align:center;color:var(--muted)}
 .empty b{display:block;color:var(--ink);font-size:17px;margin-bottom:6px}
 .foot{margin-top:24px;font-size:12px;color:var(--muted);text-align:center}
 
+.obras{display:flex;gap:8px;overflow-x:auto;width:100%;scrollbar-width:none;padding:2px 0}
+.obras::-webkit-scrollbar,.frow::-webkit-scrollbar,.strip::-webkit-scrollbar{display:none}
+.obras .chip{flex:none;white-space:nowrap}
+.chip.add{border-style:dashed;background:transparent}
+#filters{display:flex;flex-direction:column;gap:6px;margin:0 0 6px}
+.frow{display:flex;align-items:center;gap:6px}
+.fchips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;flex:1;min-width:0}
+.fchips::-webkit-scrollbar{display:none}
+.frow .fl{font-size:12px;color:var(--muted);flex:none;width:68px}
+.fchips .chip{flex:none;height:32px;font-size:13px;white-space:nowrap}
+.sect{font-size:13px;font-weight:600;color:var(--muted);margin:10px 0 6px}
+.strip{display:flex;gap:10px;overflow-x:auto;scrollbar-width:none;padding-bottom:4px}
+.card.sm{flex:none;width:120px}
+.card.sm .th{aspect-ratio:4/3}
+.card.sm .meta{padding:6px 8px}
+.card.sm .t b{font-size:12px}
+.card.sm .t span{font-size:11px}
+.lhead #bDalux{flex:0 0 auto}
 /* Editor */
 #ed{position:fixed;inset:0;display:flex;flex-direction:column;background:var(--desk)}
 .ebar{display:flex;align-items:center;gap:2px;padding:calc(6px + env(safe-area-inset-top)) 6px 4px;background:var(--surface);border-bottom:1px solid var(--line)}
@@ -170,12 +188,16 @@ textarea.field{height:110px;padding:10px 12px;resize:vertical}
 <main id="lib">
   <div class="lhead">
     <h1>Notas de obra</h1>
+    <div class="obras" id="obras"></div>
+    <button class="btn" id="bDalux" hidden><svg class="i"><use href="#i-share"/></svg>Dalux</button>
     <button class="btn" id="bBlank"><svg class="i"><use href="#i-plus"/></svg>En blanco</button>
-    <label class="btn pri" id="bImport" for="file" style="position:relative;overflow:hidden"><svg class="i"><use href="#i-pdf"/></svg>Importar PDF<input type="file" id="file" accept="application/pdf,.pdf" style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;font-size:0"></label>
-    <input class="search" id="q" placeholder="Buscar notas" type="search">
+    <label class="btn pri" id="bImport" for="file" style="position:relative;overflow:hidden"><svg class="i"><use href="#i-pdf"/></svg>Importar<input type="file" id="file" multiple accept="application/pdf,.pdf" style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;font-size:0"></label>
+    <input class="search" id="q" placeholder="Buscar plano o código" type="search">
   </div>
+  <div id="filters"></div>
+  <div id="recent"></div>
   <div class="grid" id="grid"></div>
-  <div class="empty" id="empty" hidden><b>Aún no hay notas</b>Importa un plano en PDF para escribir encima y medir sobre él, o crea una nota en blanco.</div>
+  <div class="empty" id="empty" hidden><b>Aún no hay planos</b>Crea una obra con «+ Obra» e importa sus planos en PDF (puedes seleccionar muchos a la vez). Se clasifican solos por zona e instalación según el nombre del archivo.</div>
   <div class="foot">Las notas se guardan en este dispositivo.</div>
 </main>
 
@@ -331,54 +353,215 @@ async function loadPdf(bytes){
 }
 
 /* ---------- Biblioteca ---------- */
-let notes = [];
+let notes = [], obras = [];
+let curObra = prefs.obra || '', fZona = null, fInst = null;
+const natural = (a, b) => a.localeCompare(b, 'es', {numeric:true, sensitivity:'base'});
 async function refreshLib(){
-  notes = (await DB.all('notes')).sort((a,b) => b.updated - a.updated);
+  const all = await DB.all('notes');
+  obras = all.filter(n => n.kind === 'obra').sort((a,b) => natural(a.name, b.name));
+  notes = all.filter(n => n.kind !== 'obra').sort((a,b) => b.updated - a.updated);
+  if(curObra && !obras.find(o => o.id === curObra)) curObra = '';
   renderLib();
 }
+function chipBtn(label, on, fn, cls=''){ return h('button',{class:'chip ' + cls + (on ? ' on' : ''), onclick:fn}, label); }
+function selObra(id){ curObra = id; prefs.obra = id; savePrefs(); fZona = fInst = null; $('#q').value = ''; renderLib(); }
+function noteCard(n, small){
+  const th = h('div',{class:'th'}); if(n.thumb) th.style.backgroundImage = `url(${n.thumb})`;
+  const more = h('button',{class:'more', title:'Opciones', onclick:e => { e.stopPropagation(); noteMenu(n); }}, svgIcon('i-more'));
+  const tags = [n.zona, n.inst].filter(Boolean).join(' · ');
+  const sub = (tags ? tags + ' · ' : '') + n.pages.length + (n.pages.length === 1 ? ' pág.' : ' págs.');
+  return h('div',{class:'card' + (small ? ' sm' : ''), role:'button', tabindex:'0', onclick:() => openNote(n.id)},
+    th, h('div',{class:'meta'}, h('div',{class:'t'}, h('b',{}, n.title), h('span',{}, sub)), small ? null : more));
+}
 function renderLib(){
+  // obras
+  const ob = $('#obras'); ob.innerHTML = '';
+  ob.append(chipBtn('Todas', !curObra, () => selObra('')));
+  obras.forEach(o => ob.append(chipBtn(o.name, curObra === o.id, () => curObra === o.id ? obraMenu(o) : selObra(o.id))));
+  ob.append(chipBtn('+ Obra', false, newObra, 'add'));
+  const o = obras.find(x => x.id === curObra);
+  $('#bDalux').hidden = !o;
   const q = $('#q').value.trim().toLowerCase();
-  const list = notes.filter(n => !q || n.title.toLowerCase().includes(q));
-  const g = $('#grid'); g.innerHTML='';
-  $('#empty').hidden = notes.length > 0;
-  for(const n of list){
-    const th = h('div',{class:'th'}); if(n.thumb) th.style.backgroundImage = `url(${n.thumb})`;
-    const more = h('button',{class:'more', title:'Opciones', onclick:e => { e.stopPropagation(); noteMenu(n); }}, svgIcon('i-more'));
-    const card = h('div',{class:'card', role:'button', tabindex:'0', onclick:() => openNote(n.id)},
-      th, h('div',{class:'meta'}, h('div',{class:'t'}, h('b',{}, n.title), h('span',{}, fmtDate(n.updated) + ' · ' + n.pages.length + (n.pages.length===1?' pág.':' págs.'))), more));
-    g.appendChild(card);
+  const inObra = notes.filter(n => !curObra || n.obra === curObra);
+  // filtros
+  const fr = $('#filters'); fr.innerHTML = '';
+  const zonas = [...new Set(inObra.map(n => n.zona || ''))].sort((a,b) => (a===''?1:0) - (b===''?1:0) || natural(a,b));
+  const insts = [...new Set(inObra.map(n => n.inst || ''))].sort((a,b) => (a===''?1:0) - (b===''?1:0) || natural(a,b));
+  if(fZona != null && !zonas.includes(fZona)) fZona = null;
+  if(fInst != null && !insts.includes(fInst)) fInst = null;
+  const row = (title, vals, cur, set, empty) => {
+    if(!vals.some(v => v)) return;
+    const sc = h('div',{class:'fchips'}), r = h('div',{class:'frow'}, h('span',{class:'fl'}, title), sc);
+    sc.append(chipBtn('Todas', cur == null, () => { set(null); renderLib(); }));
+    vals.forEach(v => sc.append(chipBtn(v || empty, cur === v, () => { set(cur === v ? null : v); renderLib(); })));
+    fr.append(r);
+  };
+  row('Zona', zonas, fZona, v => fZona = v, 'Sin zona');
+  row('Instalación', insts, fInst, v => fInst = v, 'Sin instalación');
+  fr.querySelectorAll('.chip.on').forEach(c => { const p = c.parentElement; p.scrollLeft = c.offsetLeft - p.offsetLeft - (p.clientWidth - c.offsetWidth)/2; });
+  const oc = ob.querySelector('.chip.on'); if(oc) ob.scrollLeft = oc.offsetLeft - ob.offsetLeft - (ob.clientWidth - oc.offsetWidth)/2;
+  let list = inObra.filter(n => (fZona == null || (n.zona || '') === fZona) && (fInst == null || (n.inst || '') === fInst) && (!q || (n.title + ' ' + (n.zona||'') + ' ' + (n.inst||'')).toLowerCase().includes(q)));
+  if(curObra) list.sort((a,b) => natural(a.title, b.title));
+  // recientes
+  const rc = $('#recent'); rc.innerHTML = '';
+  if(!q && fZona == null && fInst == null){
+    const rec = inObra.filter(n => n.opened).sort((a,b) => b.opened - a.opened).slice(0, 6);
+    if(rec.length && inObra.length > 4){ rc.append(h('div',{class:'sect'}, 'Recientes')); const strip = h('div',{class:'strip'}); rec.forEach(n => strip.append(noteCard(n, true))); rc.append(strip); rc.append(h('div',{class:'sect'}, 'Todos los planos (' + inObra.length + ')')); }
   }
+  const g = $('#grid'); g.innerHTML = '';
+  list.forEach(n => g.appendChild(noteCard(n)));
+  const em = $('#empty'); em.hidden = list.length > 0;
+  if(!list.length && inObra.length) { em.innerHTML = '<b>Nada con ese filtro</b>Prueba con otra zona o instalación.'; }
+  else if(!list.length) em.innerHTML = curObra ? '<b>Esta obra aún no tiene planos</b>Pulsa «Importar planos» y selecciona todos los PDF a la vez. Se clasifican solos por zona e instalación según el nombre del archivo.' : '<b>Aún no hay planos</b>Crea una obra con «+ Obra» e importa sus planos en PDF (puedes seleccionar muchos a la vez).';
 }
 function svgIcon(id){ const s=document.createElementNS('http://www.w3.org/2000/svg','svg'); s.setAttribute('class','i'); const u=document.createElementNS('http://www.w3.org/2000/svg','use'); u.setAttribute('href','#'+id); s.appendChild(u); return s; }
 function fmtDate(t){ return new Date(t).toLocaleDateString('es-ES',{day:'numeric', month:'short', year:'numeric'}); }
+async function newObra(){
+  const name = await askText('Nueva obra', '', {label:'Crear', hint:'Por ejemplo: Campus Mango'});
+  if(!name || !name.trim()) return;
+  const o = {id:'obra_' + uid(), kind:'obra', name:name.trim(), dalux:'', updated:Date.now()};
+  await DB.put('notes', o.id, o); await refreshLib(); selObra(o.id); return o;
+}
+function obraMenu(o){
+  sheet((sh, close) => {
+    sh.append(h('h2',{}, o.name), h('div',{class:'menu'},
+      h('button',{onclick:() => { close(); daluxLink(o); }}, svgIcon('i-share'), o.dalux ? 'Cambiar enlace de Dalux' : 'Poner enlace de Dalux'),
+      h('button',{onclick:async () => { close(); const t = await askText('Renombrar obra', o.name); if(t && t.trim()){ o.name = t.trim(); await DB.put('notes', o.id, o); refreshLib(); } }}, svgIcon('i-text'), 'Renombrar'),
+      h('button',{onclick:async () => { close(); if(await confirmSheet('Quitar obra', 'Se quita la obra «' + o.name + '». Sus planos no se borran: pasan a «Todas» sin obra.', 'Quitar')){ for(const n of notes.filter(n => n.obra === o.id)){ n.obra = ''; await DB.put('notes', n.id, n); } await DB.del('notes', o.id); selObra(''); refreshLib(); } }}, svgIcon('i-trash'), 'Quitar obra')));
+  });
+}
+async function daluxLink(o){
+  const v = await askText('Enlace de Dalux', o.dalux || '', {label:'Guardar', hint:'Abre el proyecto en Dalux (web o app), copia el enlace y pégalo aquí. Si lo dejas vacío, el botón abre Dalux en general.'});
+  if(v == null) return; o.dalux = v.trim(); await DB.put('notes', o.id, o); refreshLib();
+}
+$('#bDalux').onclick = () => {
+  const o = obras.find(x => x.id === curObra); if(!o) return;
+  const url = o.dalux && /^https?:\/\//i.test(o.dalux) ? o.dalux : 'https://field.dalux.com/';
+  window.open(url, '_blank', 'noopener');
+};
 function noteMenu(n){
   sheet((sh, close) => {
     sh.append(h('h2',{}, n.title), h('div',{class:'menu'},
+      h('button',{onclick:() => { close(); tagsSheet(n); }}, svgIcon('i-list'), 'Zona e instalación'),
+      h('button',{onclick:() => { close(); moveSheet(n); }}, svgIcon('i-share'), 'Mover a otra obra'),
       h('button',{onclick:async () => { close(); const t = await askText('Renombrar', n.title); if(t && t.trim()){ n.title=t.trim(); await DB.put('notes', n.id, n); refreshLib(); } }}, svgIcon('i-text'), 'Renombrar'),
       h('button',{onclick:async () => { close(); if(await confirmSheet('Eliminar nota', `Se borrará «${n.title}» y todas sus anotaciones de este dispositivo.`)){ const an = await DB.get('ann', n.id); if(an) for(const pg of an.pages) for(const ph of (pg.photos||[])) await DB.del('photos', ph.photoId); await DB.del('notes',n.id); await DB.del('pdfs',n.id); await DB.del('ann',n.id); refreshLib(); } }}, svgIcon('i-trash'), 'Eliminar')));
   });
 }
+function tagsSheet(n){
+  sheet((sh, close) => {
+    const same = notes.filter(x => x.obra === n.obra);
+    const mk = (key, ph) => {
+      const inp = h('input',{class:'field', placeholder:ph}); inp.value = n[key] || '';
+      const vals = [...new Set(same.map(x => x[key]).filter(Boolean))].sort(natural);
+      const ch = h('div',{class:'chips'}); vals.forEach(v => ch.append(chipBtn(v, false, () => { inp.value = v; })));
+      return [inp, ch];
+    };
+    const [zi, zc] = mk('zona', 'Zona (p. ej. Planta 1, Módulo 4, Cubierta)'), [ii, ic] = mk('inst', 'Instalación (p. ej. Climatización)');
+    sh.append(h('h2',{}, 'Zona e instalación'), h('p',{}, n.title), zi, zc, ii, ic,
+      acts(h('button',{class:'btn', onclick:() => close()}, 'Cancelar'), h('button',{class:'btn pri', onclick:async () => { n.zona = zi.value.trim(); n.inst = ii.value.trim(); await DB.put('notes', n.id, n); close(); refreshLib(); }}, 'Guardar')));
+  });
+}
+function moveSheet(n){
+  sheet((sh, close) => {
+    const m = h('div',{class:'menu'});
+    [{id:'', name:'Sin obra'}, ...obras].forEach(o => m.append(h('button',{onclick:async () => { n.obra = o.id; await DB.put('notes', n.id, n); close(); refreshLib(); }}, (n.obra || '') === o.id ? '✓ ' + o.name : o.name)));
+    sh.append(h('h2',{}, 'Mover a obra'), m);
+  });
+}
+/* Clasificación por nombre de archivo */
+const INST_RULES = [
+  ['Climatización', /\b(CLIMA\w*|CLI|HVAC|CLIM|VENT\w*|CALEF\w*|AIRE|EXTRACC\w*)\b/],
+  ['Protección contra incendios', /\b(PCI|INC|INCEND\w*|FIRE|ROCIAD\w*|SPK|DETECC\w*|EXTINC\w*|BIE)\b/],
+  ['Iluminación', /\b(ILUM\w*|ALUM\w*|LUM\w*|LIGHT\w*|EMERG\w*)\b/],
+  ['Electricidad', /\b(ELEC\w*|ELE|BT|MT|FUERZA|CUADROS?|CGBT|UNIFILAR\w*)\b/],
+  ['Fontanería', /\b(FONT\w*|FON|AFS|ACS|AGUA|AF|FONTANER\w*)\b/],
+  ['Saneamiento', /\b(SAN|SANEA\w*|PLUV\w*|FECAL\w*|DREN\w*|RESIDUAL\w*)\b/],
+  ['Telecomunicaciones y AV', /\b(TEL|TELECO\w*|AV|AUDIOVIS\w*|AUDIO|ICT|DATOS|VOZ|MEGAF\w*)\b/],
+  ['Control y BMS', /\b(BMS|GTC|CONTROL|SCADA|KNX|DOMOT\w*)\b/],
+  ['Gas', /\bGAS\b/],
+  ['Arquitectura', /\b(ARQ\w*)\b/],
+  ['Estructura', /\b(EST|ESTRUC\w*)\b/]
+];
+function normName(s){ return s.replace(/\.pdf$/i,'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/[_\-.+()\[\]]+/g,' ').replace(/\s+/g,' ').trim(); }
+function classify(name){
+  const t = ' ' + normName(name) + ' ';
+  let inst = ''; for(const [k, re] of INST_RULES) if(re.test(t)){ inst = k; break; }
+  let m, zona = '', bloque = '';
+  if((m = t.match(/\bMOD(?:ULO)? ?(\d{1,2})\b/)) || (m = t.match(/\bM ?(\d{1,2})\b/))) bloque = 'Módulo ' + (+m[1]);
+  else if((m = t.match(/\bEDIF(?:ICIO)? ?([A-Z0-9]{1,2})\b/))) bloque = 'Edificio ' + m[1];
+  else if((m = t.match(/\bBLOQUE ?([A-Z0-9]{1,2})\b/))) bloque = 'Bloque ' + m[1];
+  else if((m = t.match(/\bNAVE ?([A-Z0-9]{1,2})\b/))) bloque = 'Nave ' + m[1];
+  if(/\bURB\w*/.test(t)) zona = 'Urbanización';
+  else if(/\bCUB(?:IERTA)?\b/.test(t)) zona = 'Cubierta';
+  else if((m = t.match(/\bSOT(?:ANO)? ?(\d)\b/)) || (m = t.match(/\bS ?-?(\d)\b/))) zona = 'Sótano ' + m[1];
+  else if(/\bSOT\w*\b/.test(t)) zona = 'Sótano';
+  else if(/\b(PB|PLANTA BAJA|P ?00?)\b/.test(t)) zona = 'Planta baja';
+  else if((m = t.match(/\bP ?(\d{1,2})\b/)) || (m = t.match(/\bPLANTA ?(\d{1,2})\b/))) zona = 'Planta ' + (+m[1]);
+  else if((m = t.match(/\bZONA ?([A-Z0-9]{1,3})\b/))) zona = 'Zona ' + m[1];
+  else if(/\bMUELLE\b/.test(t)) zona = 'Muelle';
+  else if(/\bPARKING\b/.test(t)) zona = 'Parking';
+  else if(/\bEXT(?:ERIOR)?\b/.test(t)) zona = 'Exterior';
+  zona = [bloque, zona].filter(Boolean).join(' · ');
+  return {zona, inst};
+}
+async function importOne(f, obra){
+  const bytes = await f.arrayBuffer();
+  const doc = await loadPdf(bytes);
+  const pages = [];
+  for(let i=1;i<=doc.numPages;i++){ const p = await doc.getPage(i); const vp = p.getViewport({scale:1}); pages.push({w:vp.width, h:vp.height}); }
+  let thumb = null;
+  try {
+    const p1 = await doc.getPage(1); const s = 300 / pages[0].w; const vp = p1.getViewport({scale:s});
+    const c = document.createElement('canvas'); c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
+    const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0,0,c.width,c.height);
+    await p1.render({canvasContext:x, viewport:vp}).promise; thumb = c.toDataURL('image/jpeg', 0.7);
+  } catch(e){}
+  doc.destroy();
+  const id = uid(), now = Date.now(), cl = classify(f.name);
+  const meta = {id, title:f.name.replace(/\.pdf$/i,''), created:now, updated:now, kind:'pdf', pages, thumb, obra: obra || '', zona:cl.zona, inst:cl.inst};
+  await DB.put('pdfs', id, bytes);
+  await DB.put('ann', id, {id, pages: pages.map(() => ({strokes:[], texts:[], measures:[], photos:[], scale:null}))});
+  await DB.put('notes', id, meta);
+  return meta;
+}
+function chooseObra(n){
+  return sheet((sh, close) => {
+    const m = h('div',{class:'menu'});
+    obras.forEach(o => m.append(h('button',{onclick:() => close(o.id)}, o.name)));
+    m.append(h('button',{onclick:async () => { close(null); const o = await newObra(); if(o) startImport(pendingFiles, o.id); }}, svgIcon('i-plus'), 'Nueva obra…'));
+    m.append(h('button',{onclick:() => close('')}, 'Sin obra'));
+    sh.append(h('h2',{}, '¿En qué obra van ' + (n === 1 ? 'este plano' : 'estos ' + n + ' planos') + '?'), m);
+  });
+}
+let pendingFiles = [];
+async function startImport(files, obra){
+  const b = document.createElement('div'); b.className = 'busy'; b.innerHTML = '<div></div>'; document.body.appendChild(b);
+  let ok = 0, last = null; const fail = [];
+  for(let k = 0; k < files.length; k++){
+    b.firstChild.textContent = files.length > 1 ? 'Importando ' + (k+1) + ' de ' + files.length + '…' : 'Abriendo PDF…';
+    try { last = await importOne(files[k], obra); ok++; } catch(err){ console.error(err); fail.push(files[k].name); }
+  }
+  b.remove();
+  if(obra !== curObra && obra) { curObra = obra; prefs.obra = obra; savePrefs(); }
+  await refreshLib();
+  if(files.length === 1 && last) openNote(last.id);
+  else {
+    const sinZ = files.length > 1 ? notes.filter(n => n.created && Date.now() - n.created < 60000 && !n.zona).length : 0;
+    toast(ok + ' planos importados' + (fail.length ? ' · ' + fail.length + ' no se pudieron abrir' : '') + (sinZ ? ' · ' + sinZ + ' sin zona (asígnala con ⋮)' : ''), 5000);
+  }
+}
 $('#q').addEventListener('input', renderLib);
 $('#file').onchange = async e => {
-  const f = e.target.files[0]; e.target.value=''; if(!f) return;
-  const done = busy('Abriendo PDF…');
-  try {
-    const bytes = await f.arrayBuffer();
-    const doc = await loadPdf(bytes);
-    const pages = [];
-    for(let i=1;i<=doc.numPages;i++){ const p = await doc.getPage(i); const vp = p.getViewport({scale:1}); pages.push({w:vp.width, h:vp.height}); }
-    const id = uid(), now = Date.now();
-    const meta = {id, title:f.name.replace(/\.pdf$/i,''), created:now, updated:now, kind:'pdf', pages, thumb:null};
-    await DB.put('pdfs', id, bytes);
-    await DB.put('ann', id, {id, pages: pages.map(() => ({strokes:[], texts:[], measures:[], photos:[], scale:null}))});
-    await DB.put('notes', id, meta);
-    doc.destroy();
-    done(); openNote(id);
-  } catch(err){ done(); console.error(err); toast('No se pudo abrir el PDF: ' + (err.message||err)); }
+  const files = [...e.target.files].filter(f => /\.pdf$/i.test(f.name) || f.type === 'application/pdf'); e.target.value = '';
+  if(!files.length) return;
+  let obra = curObra;
+  if(!obra && obras.length){ pendingFiles = files; const r = await chooseObra(files.length); if(r == null) return; obra = r; }
+  startImport(files, obra);
 };
 $('#bBlank').onclick = async () => {
   const id = uid(), now = Date.now();
-  const meta = {id, title:'Nota ' + new Date().toLocaleDateString('es-ES'), created:now, updated:now, kind:'blank', pages:[{w:595.28, h:841.89}], thumb:null};
+  const meta = {id, title:'Nota ' + new Date().toLocaleDateString('es-ES'), created:now, updated:now, kind:'blank', pages:[{w:595.28, h:841.89}], thumb:null, obra:curObra, zona:'', inst:''};
   await DB.put('ann', id, {id, pages:[{strokes:[], texts:[], measures:[], photos:[], scale:null}]});
   await DB.put('notes', id, meta);
   openNote(id);
@@ -403,6 +586,7 @@ async function openNote(id){
     done();
   }
   ann.pages.forEach(p => { p.photos = p.photos || []; });
+  meta.opened = Date.now(); DB.put('notes', id, meta);
   E = {meta, ann, pdf, pages:[], cam:{x:0,y:0,z:1}, tool: prefs.lastTool || 'pen', undo:[], redo:[], mdraft:null, live:null, hover:null};
   layoutPages();
   $('#lib').hidden = true; $('#ed').hidden = false;
@@ -1563,7 +1747,7 @@ async function buildPdf(){
 }
 
 /* ---------- Arranque ---------- */
-window.__notas = { get E(){ return E; }, get g(){ return gesture; }, get n(){ return ptrs.size; } };
+window.__notas = { get E(){ return E; }, get g(){ return gesture; }, get n(){ return ptrs.size; }, classify };
 // Actualiza la etiqueta de escala al moverse por el documento
 let lastTagPage = -1;
 setInterval(() => { if(E){ const p = currentPage(); if(p !== lastTagPage){ lastTagPage = p; updScaleTag(); } } }, 300);
