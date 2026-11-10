@@ -119,6 +119,15 @@ textarea.field{height:110px;padding:10px 12px;resize:vertical}
 .menu .sw2::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:left .15s}
 .menu .sw2.on{background:var(--accent)}
 .menu .sw2.on::after{left:21px}
+.autobox{background:var(--surface2);border:1px solid var(--line);border-radius:14px;padding:12px;margin:4px 0 10px;font-size:13px;color:var(--muted)}
+.autobox.none{color:var(--muted)}
+.autores{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.autores div{flex:1}.autores span{display:block;font-size:12px}.autores b{font-size:24px;color:var(--ink)}
+.why{margin-top:4px;line-height:1.35}
+.chip.sm{height:30px;font-size:13px;padding:0 10px;margin:4px 4px 0 0}
+.btn.wide{width:100%;justify-content:center;box-shadow:none;background:var(--surface2);border:1px solid var(--line)}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp 1s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
 #toast{position:fixed;left:50%;bottom:calc(80px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#1c1f26;color:#fff;padding:10px 14px;border-radius:12px;font-size:14px;z-index:40;max-width:calc(100% - 32px);box-shadow:0 6px 20px rgba(0,0,0,.3)}
 .busy{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:rgba(0,0,0,.25);color:#fff;font-weight:600}
 .busy div{background:#1c1f26;padding:14px 18px;border-radius:14px}
@@ -504,6 +513,7 @@ function draw(){
     c.save(); c.beginPath(); c.rect(sx,sy,sw,sh); c.clip(); c.translate(sx,sy); c.scale(z,z);
     drawItems(c, p.i, z);
     if(E.mdraft && E.mdraft.pi === p.i) drawMeasure(c, draftView(), z, true);
+    if(E.hl && E.hl.pi === p.i){ c.save(); c.strokeStyle = '#9c36b5'; c.lineWidth = 6/z; c.globalAlpha = .55; c.lineCap = 'round'; c.beginPath(); c.moveTo(E.hl.p1[0], E.hl.p1[1]); c.lineTo(E.hl.p2[0], E.hl.p2[1]); c.stroke(); c.restore(); }
     c.restore();
     drawLabels(c, p, z);
   }
@@ -642,7 +652,7 @@ function drawLoupe(){
 /* ---------- Herramientas ---------- */
 function setTool(t, fromUser){
   if(E.mdraft && E.mdraft.k !== t) cancelDraft();
-  E.tool = t; if(!['cal'].includes(t)) { prefs.lastTool = t; savePrefs(); }
+  E.tool = t; if(!['cal','cota'].includes(t)) { prefs.lastTool = t; savePrefs(); }
   document.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === t));
   const pt = prefs[t]; $('#tColor').hidden = !pt; if(pt) $('#swatch').style.background = pt.c;
   if(['len','poly','area'].includes(t)){
@@ -726,7 +736,7 @@ view.addEventListener('pointerdown', e => {
   if(gesture && gesture.mode === 'draw' && ptrs.size > 1 && gesture.type === 'touch'){ abortDraw(); }
   if(gesture && gesture.mode === 'draw') return;
   if(E.tool === 'hand' || touchNav || e.button === 1 || (gesture && gesture.mode === 'nav')){ startNav(); return; }
-  if(['len','poly','area','cal'].includes(E.tool) && e.pointerType === 'touch'){
+  if(['len','poly','area','cal','cota'].includes(E.tool) && e.pointerType === 'touch'){
     // tocar = punto · arrastrar = mover · mantener = afinar con lupa
     const pend = {mode:'pending', id:e.pointerId, s, ev:e};
     pend.timer = setTimeout(() => { if(gesture === pend){ gesture = null; startDraw(pend.ev, ptrs.get(pend.id) ? ptrs.get(pend.id).s : pend.s); requestDraw(); } }, 260);
@@ -842,6 +852,10 @@ async function endDraw(e, cancelled){
   if(cancelled){ abortDraw(); return; }
   if(g.t === 'pen' || g.t === 'hl'){ pushOp({k:'add', pi:g.pi, list:'strokes', item:g.item}); }
   else if(g.t === 'eraser'){ if(g.removed.length) pushOp({k:'del', items:g.removed}); }
+  else if(g.t === 'cota'){
+    const s = pos(e); if(Math.hypot(s[0]-g.start[0], s[1]-g.start[1]) > 12) return;
+    pickDim(g.pi, local(g.pi, s)).catch(err => { console.warn(err); toast('No se pudo leer la cota'); });
+  }
   else if(g.t === 'text'){
     const s = pos(e); if(Math.hypot(s[0]-g.start[0], s[1]-g.start[1]) > 12) return;
     const L = local(g.pi, s); const pt = prefs.text;
@@ -918,23 +932,36 @@ function scaleSheet(pi){
     [20,25,50,75,100,150,200,250,500,1000].forEach(n => chips.append(h('button',{class:'chip' + (n===sel?' on':''), onclick:ev => { sel=n; custom.value=''; [...chips.children].forEach(c=>c.classList.remove('on')); ev.currentTarget.classList.add('on'); }}, '1:' + n)));
     custom.oninput = () => { sel = null; [...chips.children].forEach(c=>c.classList.remove('on')); };
     const all = h('input',{type:'checkbox'}); all.checked = true;
+    const auto = isPdf ? h('div',{class:'autobox'}, h('span',{class:'spin'}), ' Buscando la escala en las cotas del plano…') : null;
     sh.append(
       h('h2',{}, 'Escala · página ' + (pi+1)),
-      h('p',{}, 'Actual: ' + (cur ? cur.label : 'sin escala') + '. ' + (isPdf ? 'La escala 1:N es exacta si el PDF sale de CAD al tamaño de papel real. Si está escaneado o impreso a otro tamaño, calibra con una cota conocida.' : 'En una nota en blanco usa la escala del croquis o calibra.')),
+      h('p',{}, 'Actual: ' + (cur ? cur.label : 'sin escala') + '.'),
+      auto,
+      isPdf ? h('button',{class:'btn wide', onclick:() => { close(); setTool('cota'); E.calAll = all.checked; toast('Toca el número de una cota del plano', 3500); }}, svgIcon('i-len'), 'Tocar una cota del plano') : null,
+      h('p',{style:'margin-top:14px'}, 'O elige la escala a mano (exacta si el PDF sale de CAD al tamaño de papel real):'),
       chips, h('div',{class:'row'}, custom),
       h('label',{class:'check'}, all, 'Aplicar a todas las páginas'),
       acts(
-        h('button',{class:'btn', onclick:() => { close(); setTool('cal'); E.calAll = all.checked; toast('Marca los dos extremos de una cota conocida', 3500); }}, 'Calibrar con una cota'),
+        h('button',{class:'btn', onclick:() => { close(); setTool('cal'); E.calAll = all.checked; toast('Marca los dos extremos de una medida conocida', 3500); }}, 'Calibrar a mano'),
         h('button',{class:'btn pri', onclick:() => {
           const n = sel || parseFloat(String(custom.value).replace(/^1\s*:\s*/,'').replace(',', '.'));
           if(!n || n <= 0){ toast('Elige una escala'); return; }
           setScale(pi, {n, mmPerPt: PT_MM * n, label:'1:' + nf(n, 0)}, all.checked); close(); toast('Escala 1:' + nf(n,0) + ' aplicada');
         }}, 'Aplicar')));
+    if(isPdf) detectScale(pi).then(res => {
+      auto.innerHTML = '';
+      if(!res){ auto.classList.add('none'); auto.append('No encuentro cotas ni escala legibles en esta página (¿plano escaneado?). Usa «Tocar una cota» o «Calibrar a mano».'); return; }
+      const apply = (n, label) => { setScale(pi, {n, mmPerPt: PT_MM * n, label}, all.checked); close(); toast('Escala ' + label + ' aplicada'); };
+      auto.append(h('div',{class:'autores'}, h('div',{}, h('span',{}, res.conf === 'alta' ? 'Escala detectada' : 'Escala probable'), h('b',{}, '1:' + nf(res.n, res.n < 10 ? 2 : 0))),
+        h('button',{class:'btn pri', onclick:() => apply(res.n, '1:' + nf(res.n, res.n < 10 ? 2 : 0) + ' (auto)')}, 'Usar')));
+      res.why.forEach(w => auto.append(h('div',{class:'why'}, '· ' + w)));
+      if(res.alts.length) auto.append(h('div',{class:'why'}, 'Otras posibles: ', ...res.alts.map(a => h('button',{class:'chip sm', onclick:() => apply(a.n, '1:' + nf(a.n,0) + ' (auto)')}, '1:' + nf(a.n,0) + (a.note ? ' ' + a.note : '')))));
+    }).catch(e => { console.warn(e); auto.innerHTML = ''; auto.classList.add('none'); auto.append('No se pudo analizar el plano.'); });
   });
 }
 async function calibrate(d){
   const Lpt = polyLen(d.p);
-  const v = await askText('Calibrar', '', {label:'Calibrar', hint:'¿Cuánto mide en la realidad la línea que has marcado? En metros (por ejemplo 5,40).'});
+  const v = await askText('Calibrar', E.calValue || '', {label:'Calibrar', hint:'¿Cuánto mide en la realidad la línea que has marcado? En metros (por ejemplo 5,40).'}); E.calValue = null;
   setTool(prefs.lastTool && prefs.lastTool !== 'cal' ? prefs.lastTool : 'len');
   if(v == null) return;
   const m = parseFloat(String(v).replace(',', '.'));
@@ -942,6 +969,232 @@ async function calibrate(d){
   const mmPerPt = m * 1000 / Lpt, eq = mmPerPt / PT_MM;
   setScale(d.pi, {n:null, mmPerPt, label:'calibrada ≈1:' + nf(eq, 0)}, E.calAll !== false);
   toast('Escala calibrada: ≈1:' + nf(eq, 0));
+}
+
+
+/* ---------- Escala automática a partir de cotas ---------- */
+const STD = [1,2,5,10,20,25,50,75,100,125,150,200,250,300,400,500,750,1000,1250,1500,2000,2500,5000];
+const PAPERS = {A0:[2384,3370], A1:[1684,2384], A2:[1191,1684], A3:[842,1191], A4:[595,842]};
+function paperOf(w, h){ const a = Math.min(w,h), b = Math.max(w,h); for(const [k,[x,y]] of Object.entries(PAPERS)) if(Math.abs(a-x)/x < 0.04 && Math.abs(b-y)/y < 0.04) return k; return null; }
+function snapStd(n){ let best = null; for(const s of STD){ const e = Math.abs(n - s)/s; if(e < 0.03 && (!best || e < best.e)) best = {n:s, e}; } return best ? best.n : null; }
+function parseDim(str){
+  const s = str.replace(/\s+/g,'').replace(/^(L=|l=|H=|h=)/,'');
+  const m = s.match(/^(\d{1,5}(?:[.,]\d{1,3})?)(m|cm|mm)?$/i); if(!m) return null;
+  const v = parseFloat(m[1].replace(',', '.')); if(!(v > 0)) return null;
+  return {v, unit: m[2] ? m[2].toLowerCase() : null, dec: /[.,]/.test(m[1])};
+}
+async function analyzePage(pi){
+  E.anal = E.anal || {};
+  if(E.anal[pi]) return E.anal[pi];
+  const U = pdfjsLib.Util, OPS = pdfjsLib.OPS;
+  const pg = await E.pdf.getPage(pi+1); const vp = pg.getViewport({scale:1});
+  const tc = await pg.getTextContent();
+  const texts = [];
+  for(const it of tc.items){
+    const str = (it.str || '').trim(); if(!str) continue;
+    const m = U.transform(vp.transform, it.transform);
+    const sl = Math.hypot(m[0], m[1]) || 1, ux = m[0]/sl, uy = m[1]/sl, hh = Math.hypot(m[2], m[3]) || sl;
+    const w = it.width || str.length * hh * 0.5;
+    texts.push({str, ux, uy, w, h:hh, x:m[4], y:m[5], cx: m[4] + ux*w/2 + uy*hh*0.35, cy: m[5] + uy*w/2 - ux*hh*0.35});
+  }
+  // segmentos de línea del dibujo
+  const ol = await pg.getOperatorList();
+  const segs = []; let ctm = [1,0,0,1,0,0]; const st = [];
+  const MAXS = 2.4e6;
+  for(let i=0; i<ol.fnArray.length && segs.length < MAXS; i++){
+    const fn = ol.fnArray[i], a = ol.argsArray[i];
+    if(fn === OPS.save) st.push(ctm); else if(fn === OPS.restore) ctm = st.pop() || ctm;
+    else if(fn === OPS.transform) ctm = U.transform(ctm, a);
+    else if(fn === OPS.paintFormXObjectBegin){ st.push(ctm); if(a && a[0]) ctm = U.transform(ctm, a[0]); }
+    else if(fn === OPS.paintFormXObjectEnd) ctm = st.pop() || ctm;
+    else if(fn === OPS.constructPath){
+      const ops = a[0], co = a[1]; const T = U.transform(vp.transform, ctm);
+      const P = (x,y) => [T[0]*x + T[2]*y + T[4], T[1]*x + T[3]*y + T[5]];
+      let k = 0, cx = 0, cy = 0, sx = null, sy = null;
+      for(const op of ops){
+        if(op === OPS.moveTo){ [cx,cy] = P(co[k], co[k+1]); sx = cx; sy = cy; k += 2; }
+        else if(op === OPS.lineTo){ const [x,y] = P(co[k], co[k+1]); k += 2; segs.push(cx,cy,x,y); cx = x; cy = y; }
+        else if(op === OPS.curveTo){ [cx,cy] = P(co[k+4], co[k+5]); k += 6; }
+        else if(op === OPS.curveTo2 || op === OPS.curveTo3){ [cx,cy] = P(co[k+2], co[k+3]); k += 4; }
+        else if(op === OPS.rectangle){ const x=co[k], y=co[k+1], w=co[k+2], hh=co[k+3]; k += 4; const p1=P(x,y), p2=P(x+w,y), p3=P(x+w,y+hh), p4=P(x,y+hh); segs.push(...p1,...p2, ...p2,...p3, ...p3,...p4, ...p4,...p1); [cx,cy] = p1; sx = cx; sy = cy; }
+        else if(op === OPS.closePath){ if(sx != null && (cx !== sx || cy !== sy)) segs.push(cx,cy,sx,sy); cx = sx; cy = sy; }
+      }
+    }
+  }
+  // rejilla espacial
+  const G = 40, grid = new Map();
+  for(let i=0; i<segs.length; i+=4){
+    const L = Math.hypot(segs[i+2]-segs[i], segs[i+3]-segs[i+1]); if(L < 1) continue;
+    const x0 = Math.floor(Math.min(segs[i], segs[i+2])/G), x1 = Math.floor(Math.max(segs[i], segs[i+2])/G);
+    const y0 = Math.floor(Math.min(segs[i+1], segs[i+3])/G), y1 = Math.floor(Math.max(segs[i+1], segs[i+3])/G);
+    if((x1-x0+1)*(y1-y0+1) > 400) continue;
+    for(let gx=x0; gx<=x1; gx++) for(let gy=y0; gy<=y1; gy++){ const key = gx + ',' + gy; let c = grid.get(key); if(!c) grid.set(key, c = []); c.push(i); }
+  }
+  const res = {texts, segs, grid, G, w:vp.width, h:vp.height};
+  E.anal[pi] = res; return res;
+}
+function matchDimLine(A, t){
+  // busca la línea de cota paralela al texto, justo encima o debajo
+  const tol = Math.max(t.h * 2.2, 3), reach = t.w * 6 + 40, G = A.G, S = A.segs;
+  const nx = -t.uy, ny = t.ux;
+  const xs = [t.cx - reach, t.cx + reach], ys = [t.cy - reach, t.cy + reach];
+  const seen = new Set(), groups = new Map(), cross = [];
+  for(let gx = Math.floor(xs[0]/G); gx <= Math.floor(xs[1]/G); gx++) for(let gy = Math.floor(ys[0]/G); gy <= Math.floor(ys[1]/G); gy++){
+    const c = A.grid.get(gx + ',' + gy); if(!c) continue;
+    for(const i of c){
+      if(seen.has(i)) continue; seen.add(i);
+      const dx = S[i+2]-S[i], dy = S[i+3]-S[i+1], L = Math.hypot(dx, dy);
+      if(Math.abs(dx/L * t.uy - dy/L * t.ux) > 0.03){ cross.push(i); continue; }   // no paralela: posible línea de referencia o marca
+      const o1 = (S[i]-t.cx)*nx + (S[i+1]-t.cy)*ny, o2 = (S[i+2]-t.cx)*nx + (S[i+3]-t.cy)*ny;
+      if(Math.abs(o1 - o2) > 0.6) continue;
+      const off = (o1 + o2)/2; if(Math.abs(off) > tol) continue;
+      let a = (S[i]-t.cx)*t.ux + (S[i+1]-t.cy)*t.uy, b = (S[i+2]-t.cx)*t.ux + (S[i+3]-t.cy)*t.uy; if(a > b) [a,b] = [b,a];
+      const key = Math.round(off * 2) / 2; let g = groups.get(key); if(!g) groups.set(key, g = []); g.push([a,b]);
+    }
+  }
+  let best = null;
+  for(const [off, iv] of groups){
+    iv.sort((p,q) => p[0]-q[0]);
+    const gap = t.w + t.h * 2; let cur = null; const merged = [];
+    for(const s of iv){ if(cur && s[0] <= cur[1] + gap) cur[1] = Math.max(cur[1], s[1]); else { cur = s.slice(); merged.push(cur); } }
+    for(const m of merged){
+      if(m[0] > t.w*0.1 || m[1] < -t.w*0.1) continue;                   // el texto debe quedar dentro de la línea
+      const L = m[1] - m[0]; if(L < t.w * 1.1) continue;
+      if(!best || Math.abs(off) < Math.abs(best.off) - 0.3) best = {off, a:m[0], b:m[1], L};
+    }
+  }
+  if(!best) return null;
+  // cortar en las líneas de referencia / marcas que cruzan la línea de cota (cadenas de cotas)
+  let lo = best.a, hi = best.b; const half = t.w/2;
+  for(const i of cross){
+    const dx = S[i+2]-S[i], dy = S[i+3]-S[i+1], L = Math.hypot(dx, dy); if(L < 0.5) continue;
+    const sin = Math.abs(dx/L * t.uy - dy/L * t.ux);              // 1 = perpendicular
+    const oblique = sin > 0.45 && sin < 0.9;
+    if(!(L >= t.h * 1.5 || oblique)) continue;                   // ignora bases de flechas
+    const o1 = (S[i]-t.cx)*nx + (S[i+1]-t.cy)*ny - best.off, o2 = (S[i+2]-t.cx)*nx + (S[i+3]-t.cy)*ny - best.off;
+    if(o1*o2 > 0 && Math.min(Math.abs(o1), Math.abs(o2)) > 0.6) continue;
+    const k = Math.abs(o2-o1) < 1e-9 ? 0 : -o1/(o2-o1);
+    const sx = (S[i] + dx*k - t.cx)*t.ux + (S[i+1] + dy*k - t.cy)*t.uy;
+    if(sx < -half*0.9 && sx > lo) lo = sx;
+    if(sx > half*0.9 && sx < hi) hi = sx;
+  }
+  best.a = lo; best.b = hi; best.L = hi - lo;
+  if(best.L < t.w * 1.05) return null;
+  const p = (s) => [t.cx + t.ux*s + nx*best.off, t.cy + t.uy*s + ny*best.off];
+  return {L: best.L, p1: p(best.a), p2: p(best.b)};
+}
+function scaleFromRatio(r, dims){
+  // r = valor / longitud en pt. Probar unidades m, cm, mm
+  const decs = dims.filter(d => d.dec).length, ints = dims.length - decs;
+  const out = [];
+  for(const [u, f] of [['m',1000],['cm',10],['mm',1]]){
+    const n = r * f / PT_MM; if(n < 4 || n > 6000) continue;
+    const s = snapStd(n);
+    const POP = {50:1.5, 100:1.5, 20:1, 25:1, 200:1, 75:.8, 150:.8, 250:.6, 500:.6, 10:.5, 1000:.4};
+    let score = s ? 2 + (POP[s] || 0.2) : 0;
+    if(u === 'm' && decs >= ints) score += 2;
+    if(u !== 'm' && ints > decs) score += 1;
+    out.push({n: s || Math.round(n*10)/10, raw:n, u, score});
+  }
+  return out.sort((a,b) => b.score - a.score);
+}
+async function detectScale(pi){
+  await new Promise(r => setTimeout(r, 30));
+  const A = await analyzePage(pi);
+  const why = [];
+  // 1) cotas
+  const cands = [];
+  for(const t of A.texts){
+    const d = parseDim(t.str); if(!d || d.v < 0.05) continue;
+    const m = matchDimLine(A, t); if(!m) continue;
+    const f = d.unit === 'm' ? 1 : d.unit === 'cm' ? 0.01 : d.unit === 'mm' ? 0.001 : null;
+    cands.push({r: d.v / m.L, d, t, m, f});
+  }
+  let dimRes = null;
+  if(cands.length){
+    let bestC = null;
+    for(const c of cands){
+      const grp = cands.filter(o => Math.abs(Math.log(o.r / c.r)) < 0.02);
+      if(!bestC || grp.length > bestC.length) bestC = grp;
+    }
+    const need = cands.length >= 6 ? Math.max(3, Math.ceil(cands.length * 0.25)) : 2;
+    if(bestC.length >= need || (cands.length === 1)){
+      const rs = bestC.map(c => c.r).sort((a,b) => a-b), r = rs[Math.floor(rs.length/2)];
+      const opts = scaleFromRatio(r, bestC.map(c => c.d));
+      if(opts.length) dimRes = {opts, count: bestC.length, total: cands.length, sample: bestC[0]};
+    }
+  }
+  // 2) escala escrita en el cajetín
+  const page = paperOf(A.w, A.h);
+  const hints = [];
+  const full = A.texts.map(t => t.str).join(' ');
+  for(const m of full.matchAll(/1\s*[:\/]\s*(\d{1,5})(?:\s*\(?\s*(A[0-4])\b)?/gi)){
+    const n = +m[1]; if(n < 2 || n > 5000 || !STD.includes(n)) continue;
+    const paper = m[2] ? m[2].toUpperCase() : null;
+    let adj = n;
+    if(paper && page && paper !== page) adj = n * PAPERS[paper][0] / PAPERS[page][0];
+    hints.push({n, paper, adj: snapStd(adj) || Math.round(adj)});
+  }
+  let fromHint = null;
+  if(page) fromHint = hints.find(h => h.paper === page) || null;
+  if(!fromHint && hints.length) fromHint = hints.find(h => h.paper) || hints[0];
+  // 3) decidir
+  let n = null, conf = 'media', alts = [];
+  if(dimRes){
+    let pick = dimRes.opts[0];
+    if(fromHint){ const agree = dimRes.opts.find(o => Math.abs(o.n - fromHint.adj)/fromHint.adj < 0.03); if(agree){ pick = agree; conf = 'alta'; } }
+    else if(dimRes.count >= 3) conf = 'alta';
+    n = pick.n;
+    why.push(dimRes.count + (dimRes.count === 1 ? ' cota del plano encaja' : ' cotas del plano encajan') + ' con esta escala' + (dimRes.total > dimRes.count ? ' (de ' + dimRes.total + ' leídas)' : '') + ', medidas en ' + pick.u + '.');
+    dimRes.opts.filter(o => o !== pick).forEach(o => alts.push({n:o.n, note:'(cotas en ' + o.u + ')'}));
+  }
+  if(fromHint){
+    const txt = 'El cajetín indica 1:' + fromHint.n + (fromHint.paper ? ' en ' + fromHint.paper : '') + (fromHint.paper && page && fromHint.paper !== page ? '; el PDF es ' + page + ', así que equivale a 1:' + fromHint.adj : '') + '.';
+    if(n == null){ n = fromHint.adj; conf = 'media'; why.push(txt + ' Compruébalo midiendo algo conocido.'); }
+    else if(Math.abs(fromHint.adj - n)/n < 0.03) why.push(txt);
+    else { why.push(txt + ' No coincide con las cotas: revisa.'); conf = 'media'; alts.unshift({n:fromHint.adj, note:'(cajetín)'}); }
+  }
+  if(n == null) return null;
+  if(page) why.push('Tamaño del PDF: ' + page + '.');
+  alts = alts.filter((a,i,arr) => Math.abs(a.n - n)/n > 0.02 && arr.findIndex(b => b.n === a.n) === i).slice(0,3);
+  return {n, conf, why, alts};
+}
+async function pickDim(pi, L){
+  const A = await analyzePage(pi);
+  const r = 26 / E.cam.z;
+  let best = null;
+  for(const t of A.texts){
+    const d = parseDim(t.str); if(!d) continue;
+    const dist = Math.hypot(L[0]-t.cx, L[1]-t.cy);
+    if(dist < Math.max(r, t.w*0.7) && (!best || dist < best.dist)) best = {t, d, dist};
+  }
+  if(!best){ toast('No hay una cota legible ahí. Toca justo sobre el número, o usa «Calibrar a mano».', 4000); return; }
+  const m = matchDimLine(A, best.t);
+  if(!m){
+    toast('He leído «' + best.t.str + '» pero no encuentro su línea. Márcala tú con los dos extremos.', 4500);
+    E.calValue = best.t.str; setTool('cal'); return;
+  }
+  E.hl = {pi, p1:m.p1, p2:m.p2}; requestDraw(); $('#toast').hidden = true;
+  const opts = scaleFromRatio(best.d.v / m.L, [best.d]);
+  const forced = best.d.unit;
+  setTool(prefs.lastTool && !['cal','cota'].includes(prefs.lastTool) ? prefs.lastTool : 'len');
+  await sheet((sh, close) => {
+    sh.append(h('h2',{}, 'Cota «' + best.t.str + '»'),
+      h('p',{}, 'Línea de cota encontrada (resaltada en morado): ' + nf(m.L * PT_MM, 1) + ' mm en el papel. ¿En qué unidad está la cota?'));
+    const list = h('div',{class:'menu'});
+    const all = [['m',1000],['cm',10],['mm',1]].filter(([u]) => !forced || u === forced).map(([u,f]) => { const n = best.d.v * f / (m.L * PT_MM); return {u, n, s:snapStd(n)}; }).filter(o => o.n >= 5 && o.n <= 10000);
+    all.sort((a,b) => (opts[0] && b.u === opts[0].u) - (opts[0] && a.u === opts[0].u));
+    all.forEach(o => {
+      const label = o.s ? '1:' + o.s : '≈1:' + nf(o.n, 0);
+      list.append(h('button',{onclick:() => {
+        const n = o.s || o.n;
+        setScale(pi, {n:o.s || null, mmPerPt: o.s ? PT_MM * o.s : best.d.v * ({m:1000,cm:10,mm:1}[o.u]) / m.L, label: (o.s ? '1:' + o.s : 'calibrada ≈1:' + nf(o.n,0)) + ' (cota)'}, E.calAll !== false);
+        close(); toast('Escala ' + label + ' aplicada');
+      }}, h('b',{style:'min-width:44px'}, o.u), 'Cota en ' + ({m:'metros', cm:'centímetros', mm:'milímetros'}[o.u]) + ' → escala ' + label + (o.s ? '' : ' (no estándar)')));
+    });
+    sh.append(list, acts(h('button',{class:'btn', onclick:() => close()}, 'Cancelar')));
+  });
+  E.hl = null; requestDraw();
 }
 
 /* ---------- Lista de medidas ---------- */
