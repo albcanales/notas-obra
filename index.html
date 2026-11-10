@@ -191,7 +191,9 @@ textarea.field{height:110px;padding:10px 12px;resize:vertical}
     <div class="obras" id="obras"></div>
     <button class="btn" id="bDalux" hidden><svg class="i"><use href="#i-share"/></svg>Dalux</button>
     <button class="btn" id="bBlank"><svg class="i"><use href="#i-plus"/></svg>En blanco</button>
-    <label class="btn pri" id="bImport" for="file" style="position:relative;overflow:hidden"><svg class="i"><use href="#i-pdf"/></svg>Importar<input type="file" id="file" multiple accept="application/pdf,.pdf" style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;font-size:0"></label>
+    <button class="btn pri" id="bImport"><svg class="i"><use href="#i-pdf"/></svg>Importar</button>
+    <input type="file" id="file" multiple accept="application/pdf,.pdf" hidden>
+    <input type="file" id="dirIn" webkitdirectory multiple hidden>
     <input class="search" id="q" placeholder="Buscar plano o código" type="search">
   </div>
   <div id="filters"></div>
@@ -354,7 +356,7 @@ async function loadPdf(bytes){
 
 /* ---------- Biblioteca ---------- */
 let notes = [], obras = [];
-let curObra = prefs.obra || '', fZona = null, fInst = null;
+let curObra = prefs.obra || '', fZona = null, fInst = null, showOld = false;
 const natural = (a, b) => a.localeCompare(b, 'es', {numeric:true, sensitivity:'base'});
 async function refreshLib(){
   const all = await DB.all('notes');
@@ -369,7 +371,7 @@ function noteCard(n, small){
   const th = h('div',{class:'th'}); if(n.thumb) th.style.backgroundImage = `url(${n.thumb})`;
   const more = h('button',{class:'more', title:'Opciones', onclick:e => { e.stopPropagation(); noteMenu(n); }}, svgIcon('i-more'));
   const tags = [n.zona, n.inst].filter(Boolean).join(' · ');
-  const sub = (tags ? tags + ' · ' : '') + n.pages.length + (n.pages.length === 1 ? ' pág.' : ' págs.');
+  const sub = (n.superseded ? 'REV. ANTERIOR · ' : '') + (tags ? tags + ' · ' : '') + n.pages.length + (n.pages.length === 1 ? ' pág.' : ' págs.');
   return h('div',{class:'card' + (small ? ' sm' : ''), role:'button', tabindex:'0', onclick:() => openNote(n.id)},
     th, h('div',{class:'meta'}, h('div',{class:'t'}, h('b',{}, n.title), h('span',{}, sub)), small ? null : more));
 }
@@ -382,7 +384,9 @@ function renderLib(){
   const o = obras.find(x => x.id === curObra);
   $('#bDalux').hidden = !o;
   const q = $('#q').value.trim().toLowerCase();
-  const inObra = notes.filter(n => !curObra || n.obra === curObra);
+  const inObraAll = notes.filter(n => !curObra || n.obra === curObra);
+  const nOld = inObraAll.filter(n => n.superseded).length;
+  const inObra = inObraAll.filter(n => showOld || !n.superseded);
   // filtros
   const fr = $('#filters'); fr.innerHTML = '';
   const zonas = [...new Set(inObra.map(n => n.zona || ''))].sort((a,b) => (a===''?1:0) - (b===''?1:0) || natural(a,b));
@@ -398,6 +402,7 @@ function renderLib(){
   };
   row('Zona', zonas, fZona, v => fZona = v, 'Sin zona');
   row('Instalación', insts, fInst, v => fInst = v, 'Sin instalación');
+  if(nOld) fr.append(h('div',{class:'frow'}, h('span',{class:'fl'}, 'Revisiones'), h('div',{class:'fchips'}, chipBtn(showOld ? 'Ocultar anteriores' : 'Ver anteriores (' + nOld + ')', showOld, () => { showOld = !showOld; renderLib(); }))));
   fr.querySelectorAll('.chip.on').forEach(c => { const p = c.parentElement; p.scrollLeft = c.offsetLeft - p.offsetLeft - (p.clientWidth - c.offsetWidth)/2; });
   const oc = ob.querySelector('.chip.on'); if(oc) ob.scrollLeft = oc.offsetLeft - ob.offsetLeft - (ob.clientWidth - oc.offsetWidth)/2;
   let list = inObra.filter(n => (fZona == null || (n.zona || '') === fZona) && (fInst == null || (n.inst || '') === fInst) && (!q || (n.title + ' ' + (n.zona||'') + ' ' + (n.inst||'')).toLowerCase().includes(q)));
@@ -483,7 +488,9 @@ const INST_RULES = [
   ['Arquitectura', /\b(ARQ\w*)\b/],
   ['Estructura', /\b(EST|ESTRUC\w*)\b/]
 ];
-function normName(s){ return s.replace(/\.pdf$/i,'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/[_\-.+()\[\]]+/g,' ').replace(/\s+/g,' ').trim(); }
+function normName(s){ return s.replace(/\.pdf$/i,'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/[_\-.+()\[\]\/\\]+/g,' ').replace(/\s+/g,' ').trim(); }
+function codeOf(name){ const m = name.match(/^\s*(\d{1,3}(?:[-.]\d{1,3}){1,3})(?=\D|$)/); return m ? m[1].replace(/\./g,'-') : ''; }
+function revOf(name){ const t = ' ' + normName(name) + ' '; const m = t.match(/\bREV ?(\d{1,2})\b/) || t.match(/\bR ?(\d{1,2})\b/); return m ? +m[1] : null; }
 function classify(name){
   const t = ' ' + normName(name) + ' ';
   let inst = ''; for(const [k, re] of INST_RULES) if(re.test(t)){ inst = k; break; }
@@ -499,6 +506,9 @@ function classify(name){
   else if(/\b(PB|PLANTA BAJA|P ?00?)\b/.test(t)) zona = 'Planta baja';
   else if((m = t.match(/\bP ?(\d{1,2})\b/)) || (m = t.match(/\bPLANTA ?(\d{1,2})\b/))) zona = 'Planta ' + (+m[1]);
   else if((m = t.match(/\bZONA ?([A-Z0-9]{1,3})\b/))) zona = 'Zona ' + m[1];
+  else if(/\bAUD(?:ITORIO)?\b/.test(t)) zona = 'Auditorio';
+  else if(/\bFOY(?:ER)?\b/.test(t)) zona = 'Foyer';
+  else if(/\b(GIM|GYM|GIMNASIO)\b/.test(t)) zona = 'Gimnasio';
   else if(/\bMUELLE\b/.test(t)) zona = 'Muelle';
   else if(/\bPARKING\b/.test(t)) zona = 'Parking';
   else if(/\bEXT(?:ERIOR)?\b/.test(t)) zona = 'Exterior';
@@ -518,11 +528,18 @@ async function importOne(f, obra){
     await p1.render({canvasContext:x, viewport:vp}).promise; thumb = c.toDataURL('image/jpeg', 0.7);
   } catch(e){}
   doc.destroy();
-  const id = uid(), now = Date.now(), cl = classify(f.name);
-  const meta = {id, title:f.name.replace(/\.pdf$/i,''), created:now, updated:now, kind:'pdf', pages, thumb, obra: obra || '', zona:cl.zona, inst:cl.inst};
+  const id = uid(), now = Date.now(), cl = classify(f.webkitRelativePath || f.name);
+  const meta = {id, title:f.name.replace(/\.pdf$/i,''), created:now, updated:now, kind:'pdf', pages, thumb, obra: obra || '', zona:cl.zona, inst:cl.inst, code:codeOf(f.name), rev:revOf(f.name)};
+  if(meta.code){
+    for(const o of notes.filter(n => (n.obra || '') === meta.obra && n.code === meta.code && !n.superseded)){
+      if((o.rev ?? -1) <= (meta.rev ?? -1)){ o.superseded = true; await DB.put('notes', o.id, o); }
+      else meta.superseded = true;
+    }
+  }
   await DB.put('pdfs', id, bytes);
   await DB.put('ann', id, {id, pages: pages.map(() => ({strokes:[], texts:[], measures:[], photos:[], scale:null}))});
   await DB.put('notes', id, meta);
+  notes.push(meta);
   return meta;
 }
 function chooseObra(n){
@@ -537,28 +554,41 @@ function chooseObra(n){
 let pendingFiles = [];
 async function startImport(files, obra){
   const b = document.createElement('div'); b.className = 'busy'; b.innerHTML = '<div></div>'; document.body.appendChild(b);
-  let ok = 0, last = null; const fail = [];
+  let ok = 0, dup = 0, last = null; const fail = [];
   for(let k = 0; k < files.length; k++){
     b.firstChild.textContent = files.length > 1 ? 'Importando ' + (k+1) + ' de ' + files.length + '…' : 'Abriendo PDF…';
+    const title = files[k].name.replace(/\.pdf$/i,'');
+    if(notes.some(n => (n.obra || '') === (obra || '') && n.title === title)){ dup++; continue; }
     try { last = await importOne(files[k], obra); ok++; } catch(err){ console.error(err); fail.push(files[k].name); }
   }
   b.remove();
   if(obra !== curObra && obra) { curObra = obra; prefs.obra = obra; savePrefs(); }
   await refreshLib();
   if(files.length === 1 && last) openNote(last.id);
+  else if(files.length === 1 && dup) toast('Ese plano ya estaba en la obra');
   else {
     const sinZ = files.length > 1 ? notes.filter(n => n.created && Date.now() - n.created < 60000 && !n.zona).length : 0;
-    toast(ok + ' planos importados' + (fail.length ? ' · ' + fail.length + ' no se pudieron abrir' : '') + (sinZ ? ' · ' + sinZ + ' sin zona (asígnala con ⋮)' : ''), 5000);
+    const old = notes.filter(n => n.superseded && Date.now() - n.updated < 120000).length;
+    toast(ok + ' planos importados' + (dup ? ' · ' + dup + ' ya estaban' : '') + (old ? ' · revisiones anteriores ocultas' : '') + (fail.length ? ' · ' + fail.length + ' no se pudieron abrir' : '') + (sinZ ? ' · ' + sinZ + ' sin zona (asígnala con ⋮)' : ''), 6000);
   }
 }
 $('#q').addEventListener('input', renderLib);
-$('#file').onchange = async e => {
+$('#bImport').onclick = () => sheet((sh, close) => {
+  sh.append(h('h2',{}, 'Importar planos'), h('div',{class:'menu'},
+    h('button',{onclick:() => { close(); $('#file').click(); }}, svgIcon('i-pdf'), 'Elegir archivos PDF'),
+    h('button',{onclick:() => { close(); $('#dirIn').click(); }}, svgIcon('i-list'), 'Elegir una carpeta completa (con subcarpetas)')),
+    h('p',{style:'margin-top:12px'}, 'Al elegir archivos puedes coger muchos a la vez: mantén pulsado uno y en el menú elige «Seleccionar todo».'),
+    acts(h('button',{class:'btn', onclick:() => close()}, 'Cancelar')));
+});
+$('#dirIn').onchange = e => handleFiles(e);
+$('#file').onchange = e => handleFiles(e);
+async function handleFiles(e){
   const files = [...e.target.files].filter(f => /\.pdf$/i.test(f.name) || f.type === 'application/pdf'); e.target.value = '';
-  if(!files.length) return;
+  if(!files.length){ toast('No hay PDF en lo que has elegido'); return; }
   let obra = curObra;
   if(!obra && obras.length){ pendingFiles = files; const r = await chooseObra(files.length); if(r == null) return; obra = r; }
   startImport(files, obra);
-};
+}
 $('#bBlank').onclick = async () => {
   const id = uid(), now = Date.now();
   const meta = {id, title:'Nota ' + new Date().toLocaleDateString('es-ES'), created:now, updated:now, kind:'blank', pages:[{w:595.28, h:841.89}], thumb:null, obra:curObra, zona:'', inst:''};
