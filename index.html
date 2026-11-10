@@ -640,18 +640,19 @@ function drawLoupe(){
 }
 
 /* ---------- Herramientas ---------- */
-function setTool(t){
+function setTool(t, fromUser){
   if(E.mdraft && E.mdraft.k !== t) cancelDraft();
   E.tool = t; if(!['cal'].includes(t)) { prefs.lastTool = t; savePrefs(); }
   document.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === t));
   const pt = prefs[t]; $('#tColor').hidden = !pt; if(pt) $('#swatch').style.background = pt.c;
   if(['len','poly','area'].includes(t)){
     const vis = visiblePages(); const pi = vis[0] ?? 0;
-    if(!E.ann.pages[pi].scale) setTimeout(() => toast('Esta página no tiene escala: toca «sin escala» abajo para fijarla'), 50);
+    if(fromUser && !E.ann.pages[pi].scale) setTimeout(() => scaleSheet(pi), 50);
+    else if(fromUser && !prefs.hintMeasure){ prefs.hintMeasure = true; savePrefs(); toast('Toca para poner puntos · arrastra para mover · mantén pulsado para afinar con lupa', 5000); }
   }
 }
 document.querySelectorAll('[data-tool]').forEach(b => b.onclick = () => {
-  if(E.tool === b.dataset.tool && prefs[E.tool]) openPenPop(b); else setTool(b.dataset.tool);
+  if(E.tool === b.dataset.tool && prefs[E.tool]) openPenPop(b); else setTool(b.dataset.tool, true);
 });
 $('#tColor').onclick = () => openPenPop($('#tColor'));
 function openPenPop(anchor){
@@ -708,6 +709,7 @@ function pos(e){ const r = view.getBoundingClientRect(); return [e.clientX - r.l
 function toDoc(s){ return [E.cam.x + s[0]/E.cam.z, E.cam.y + s[1]/E.cam.z]; }
 function pageAt(d, tol=0){ return E.pages.find(p => d[0] >= p.x - tol && d[0] <= p.x + p.w + tol && d[1] >= p.y - tol && d[1] <= p.y + p.h + tol); }
 function startNav(){
+  if(gesture && gesture.timer) clearTimeout(gesture.timer);
   const pts = [...ptrs.values()];
   if(!pts.length){ gesture = null; return; }
   const mid = pts.length > 1 ? [(pts[0].s[0]+pts[1].s[0])/2, (pts[0].s[1]+pts[1].s[1])/2] : pts[0].s;
@@ -724,6 +726,12 @@ view.addEventListener('pointerdown', e => {
   if(gesture && gesture.mode === 'draw' && ptrs.size > 1 && gesture.type === 'touch'){ abortDraw(); }
   if(gesture && gesture.mode === 'draw') return;
   if(E.tool === 'hand' || touchNav || e.button === 1 || (gesture && gesture.mode === 'nav')){ startNav(); return; }
+  if(['len','poly','area','cal'].includes(E.tool) && e.pointerType === 'touch'){
+    // tocar = punto · arrastrar = mover · mantener = afinar con lupa
+    const pend = {mode:'pending', id:e.pointerId, s, ev:e};
+    pend.timer = setTimeout(() => { if(gesture === pend){ gesture = null; startDraw(pend.ev, ptrs.get(pend.id) ? ptrs.get(pend.id).s : pend.s); requestDraw(); } }, 260);
+    gesture = pend; return;
+  }
   startDraw(e, s);
 });
 view.addEventListener('pointermove', e => {
@@ -738,6 +746,10 @@ view.addEventListener('pointermove', e => {
   }
   pp.s = s; lastMove = Date.now();
   if(!gesture) return;
+  if(gesture.mode === 'pending'){
+    if(gesture.id === e.pointerId && Math.hypot(s[0]-gesture.s[0], s[1]-gesture.s[1]) > 10){ startNav(); gesture.mid = gesture.mid; }
+    return;
+  }
   if(gesture.mode === 'nav'){
     const pts = [...ptrs.values()]; const c = E.cam, g = gesture;
     if(pts.length > 1 && g.dist > 0){
@@ -759,6 +771,13 @@ function endPointer(e){
   if(!E) return;
   const had = ptrs.delete(e.pointerId);
   if(!had) return;
+  if(gesture && gesture.mode === 'pending' && gesture.id === e.pointerId){
+    clearTimeout(gesture.timer); gesture = null;
+    if(e.type === 'pointercancel') return;
+    startDraw(e, pos(e));
+    if(gesture && gesture.mode === 'draw'){ endDraw(e, false); gesture = null; }
+    return;
+  }
   if(gesture && gesture.mode === 'draw' && gesture.id === e.pointerId){ endDraw(e, e.type === 'pointercancel'); gesture = null; }
   else if(gesture && gesture.mode === 'nav'){ ptrs.size ? startNav() : (gesture = null); lastMove = Date.now(); setTimeout(requestDraw, 200); }
 }
@@ -950,6 +969,14 @@ $('#eList').onclick = () => {
       sh.append(ul);
     }
     sh.append(acts(
+      rows.length ? h('button',{class:'btn', onclick:async () => {
+        close();
+        if(!(await confirmSheet('Borrar todas las medidas', 'Se borrarán las ' + rows.length + ' medidas de esta nota. Podrás recuperarlas con deshacer.', 'Borrar todas'))) return;
+        const items = [];
+        E.ann.pages.forEach((pg, pi) => pg.measures.forEach((m, idx) => items.push({pi, list:'measures', item:m, idx})));
+        E.ann.pages.forEach(pg => pg.measures.length = 0);
+        pushOp({k:'del', items}); toast('Medidas borradas');
+      }}, 'Borrar todas') : null,
       rows.length ? h('button',{class:'btn', onclick:async () => {
         const txt = ['Nº\tTipo\tPágina\tValor\tUnidad'].concat(rows.map(({m,pi,v},k) => [k+1, MNAME[m.k], pi+1, v==null?'':nf(v), m.k==='area'?'m²':'m'].join('\t'))).join('\n');
         try { await navigator.clipboard.writeText(txt); toast('Medidas copiadas: pégalas en Excel'); } catch(e){ toast('No se pudo copiar'); }
