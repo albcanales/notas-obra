@@ -152,6 +152,12 @@ textarea.field{height:110px;padding:10px 12px;resize:vertical}
 .pcell span{position:absolute;left:6px;top:6px;background:#1f2a44;color:#fff;font-weight:700;font-size:12px;min-width:22px;height:22px;border-radius:11px;display:grid;place-items:center;padding:0 5px}
 .srcbtns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
 .srcbtns .btn{height:56px;justify-content:center;box-shadow:none;background:var(--surface2);border:1px solid var(--line)}
+.linkbtn{color:var(--accent);font-weight:600;font-size:13px;margin-top:6px;text-decoration:underline}
+.card.arch .th{opacity:.45;position:relative}
+.card .badge{position:absolute;left:8px;top:8px;background:#1c1f26;color:#fff;font-size:11px;font-weight:700;padding:3px 7px;border-radius:7px}
+.card{position:relative}
+.spacebar{height:10px;border-radius:5px;background:var(--surface2);overflow:hidden;margin:6px 0 4px}
+.spacebar i{display:block;height:100%;background:var(--accent)}
 #toast{position:fixed;left:50%;bottom:calc(80px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#1c1f26;color:#fff;padding:10px 14px;border-radius:12px;font-size:14px;z-index:40;max-width:calc(100% - 32px);box-shadow:0 6px 20px rgba(0,0,0,.3)}
 .busy{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:rgba(0,0,0,.25);color:#fff;font-weight:600}
 .busy div{background:#1c1f26;padding:14px 18px;border-radius:14px}
@@ -200,7 +206,8 @@ textarea.field{height:110px;padding:10px 12px;resize:vertical}
   <div id="recent"></div>
   <div class="grid" id="grid"></div>
   <div class="empty" id="empty" hidden><b>Aún no hay planos</b>Crea una obra con «+ Obra» e importa sus planos en PDF (puedes seleccionar muchos a la vez). Se clasifican solos por zona e instalación según el nombre del archivo.</div>
-  <div class="foot">Las notas se guardan en este dispositivo.</div>
+  <div class="foot">Las notas se guardan en este dispositivo.<br><button class="linkbtn" id="bSpace">Espacio ocupado…</button></div>
+  <input type="file" id="reIn" accept="application/pdf,.pdf" hidden>
 </main>
 
 <!-- Editor -->
@@ -372,10 +379,11 @@ function noteCard(n, small){
   const more = h('button',{class:'more', title:'Opciones', onclick:e => { e.stopPropagation(); noteMenu(n); }}, svgIcon('i-more'));
   const tags = [n.zona, n.inst].filter(Boolean).join(' · ');
   const sub = (n.superseded ? 'REV. ANTERIOR · ' : '') + (tags ? tags + ' · ' : '') + n.pages.length + (n.pages.length === 1 ? ' pág.' : ' págs.');
-  return h('div',{class:'card' + (small ? ' sm' : ''), role:'button', tabindex:'0', onclick:() => openNote(n.id)},
-    th, h('div',{class:'meta'}, h('div',{class:'t'}, h('b',{}, n.title), h('span',{}, sub)), small ? null : more));
+  return h('div',{class:'card' + (small ? ' sm' : '') + (n.archived ? ' arch' : ''), role:'button', tabindex:'0', onclick:() => openNote(n.id)},
+    n.archived ? h('span',{class:'badge'}, 'Archivado') : null, th, h('div',{class:'meta'}, h('div',{class:'t'}, h('b',{}, n.title), h('span',{}, sub)), small ? null : more));
 }
 function renderLib(){
+  updSpaceBtn();
   // obras
   const ob = $('#obras'); ob.innerHTML = '';
   ob.append(chipBtn('Todas', !curObra, () => selObra('')));
@@ -448,6 +456,12 @@ function noteMenu(n){
   sheet((sh, close) => {
     sh.append(h('h2',{}, n.title), h('div',{class:'menu'},
       h('button',{onclick:() => { close(); tagsSheet(n); }}, svgIcon('i-list'), 'Zona e instalación'),
+      n.kind === 'pdf' ? h('button',{onclick:async () => { close(); if(n.archived){ restoreSheet(n); return; }
+        if(await hasNotes(n.id)){
+          if(!(await confirmSheet('Este plano tiene anotaciones', 'Tiene dibujos, textos, medidas o fotos. Al archivarlo se borra el PDF del móvil; las anotaciones se guardan, pero para verlas tendrás que volver a elegir exactamente el mismo PDF.', 'Continuar'))) return;
+          if(!(await confirmSheet('¿Seguro que quieres archivarlo?', 'Segunda confirmación: «' + n.title + '» se archivará aunque tenga anotaciones.', 'Archivar igualmente'))) return;
+        }
+        const fr = await archiveNote(n); await refreshLib(); toast('Plano archivado' + (fr ? ' · ' + fmtMB(fr) + ' liberados' : '')); }}, svgIcon('i-pdf'), n.archived ? 'Recuperar PDF' : 'Archivar (liberar espacio' + (n.size ? ', ' + fmtMB(n.size) : '') + ')') : null,
       h('button',{onclick:() => { close(); moveSheet(n); }}, svgIcon('i-share'), 'Mover a otra obra'),
       h('button',{onclick:async () => { close(); const t = await askText('Renombrar', n.title); if(t && t.trim()){ n.title=t.trim(); await DB.put('notes', n.id, n); refreshLib(); } }}, svgIcon('i-text'), 'Renombrar'),
       h('button',{onclick:async () => { close(); if(await confirmSheet('Eliminar nota', `Se borrará «${n.title}» y todas sus anotaciones de este dispositivo.`)){ const an = await DB.get('ann', n.id); if(an) for(const pg of an.pages) for(const ph of (pg.photos||[])) await DB.del('photos', ph.photoId); await DB.del('notes',n.id); await DB.del('pdfs',n.id); await DB.del('ann',n.id); refreshLib(); } }}, svgIcon('i-trash'), 'Eliminar')));
@@ -529,11 +543,12 @@ async function importOne(f, obra){
   } catch(e){}
   doc.destroy();
   const id = uid(), now = Date.now(), cl = classify(f.webkitRelativePath || f.name);
-  const meta = {id, title:f.name.replace(/\.pdf$/i,''), created:now, updated:now, kind:'pdf', pages, thumb, obra: obra || '', zona:cl.zona, inst:cl.inst, code:codeOf(f.name), rev:revOf(f.name)};
+  const meta = {id, title:f.name.replace(/\.pdf$/i,''), created:now, updated:now, kind:'pdf', pages, thumb, obra: obra || '', zona:cl.zona, inst:cl.inst, code:codeOf(f.name), rev:revOf(f.name), size:bytes.byteLength};
   if(meta.code){
     for(const o of notes.filter(n => (n.obra || '') === meta.obra && n.code === meta.code && !n.superseded)){
-      if((o.rev ?? -1) <= (meta.rev ?? -1)){ o.superseded = true; await DB.put('notes', o.id, o); }
-      else meta.superseded = true;
+      // la revisión anterior se archiva: se borra su PDF y se conservan sus notas
+      o.superseded = true; if(!o.archived && o.kind === 'pdf' && !(await hasNotes(o.id))){ await DB.del('pdfs', o.id); o.archived = true; }
+      await DB.put('notes', o.id, o);
     }
   }
   await DB.put('pdfs', id, bytes);
@@ -553,12 +568,18 @@ function chooseObra(n){
 }
 let pendingFiles = [];
 async function startImport(files, obra){
+  files = [...files];
   const b = document.createElement('div'); b.className = 'busy'; b.innerHTML = '<div></div>'; document.body.appendChild(b);
-  let ok = 0, dup = 0, last = null; const fail = [];
+  let ok = 0, dup = 0, restored = 0, oldSkip = 0, last = null; const fail = [];
+  files = [...files].sort((a,b) => { const ca = codeOf(a.name), cb = codeOf(b.name); return ca < cb ? -1 : ca > cb ? 1 : (revOf(b.name) ?? -1) - (revOf(a.name) ?? -1); });
   for(let k = 0; k < files.length; k++){
     b.firstChild.textContent = files.length > 1 ? 'Importando ' + (k+1) + ' de ' + files.length + '…' : 'Abriendo PDF…';
     const title = files[k].name.replace(/\.pdf$/i,'');
-    if(notes.some(n => (n.obra || '') === (obra || '') && n.title === title)){ dup++; continue; }
+    const same = notes.find(n => (n.obra || '') === (obra || '') && n.title === title);
+    if(same && same.archived && !same.superseded){ try { await restoreFrom(same, files[k]); restored++; } catch(err){ fail.push(files[k].name); } continue; }
+    if(same){ dup++; continue; }
+    const cd = codeOf(files[k].name), rv = revOf(files[k].name);
+    if(cd && notes.some(n => (n.obra || '') === (obra || '') && n.code === cd && !n.superseded && (n.rev ?? -1) > (rv ?? -1))){ oldSkip++; continue; }
     try { last = await importOne(files[k], obra); ok++; } catch(err){ console.error(err); fail.push(files[k].name); }
   }
   b.remove();
@@ -568,10 +589,70 @@ async function startImport(files, obra){
   else if(files.length === 1 && dup) toast('Ese plano ya estaba en la obra');
   else {
     const sinZ = files.length > 1 ? notes.filter(n => n.created && Date.now() - n.created < 60000 && !n.zona).length : 0;
-    const old = notes.filter(n => n.superseded && Date.now() - n.updated < 120000).length;
-    toast(ok + ' planos importados' + (dup ? ' · ' + dup + ' ya estaban' : '') + (old ? ' · revisiones anteriores ocultas' : '') + (fail.length ? ' · ' + fail.length + ' no se pudieron abrir' : '') + (sinZ ? ' · ' + sinZ + ' sin zona (asígnala con ⋮)' : ''), 6000);
+    toast(ok + ' planos importados' + (restored ? ' · ' + restored + ' recuperados' : '') + (dup ? ' · ' + dup + ' ya estaban' : '') + (oldSkip ? ' · ' + oldSkip + ' revisiones antiguas no guardadas' : '') + (fail.length ? ' · ' + fail.length + ' no se pudieron abrir' : '') + (sinZ ? ' · ' + sinZ + ' sin zona (asígnala con ⋮)' : ''), 6000);
   }
 }
+/* ---------- Archivo y espacio ---------- */
+async function hasNotes(id){
+  const a = await DB.get('ann', id); if(!a) return false;
+  return a.pages.some(p => (p.strokes||[]).length || (p.texts||[]).length || (p.measures||[]).length || (p.photos||[]).length);
+}
+const fmtMB = b => b >= 1e9 ? nf(b/1e9, 1) + ' GB' : b >= 1e6 ? nf(b/1e6, 0) + ' MB' : nf(Math.max(b, 0)/1e3, 0) + ' kB';
+async function archiveNote(n){
+  if(n.archived || n.kind !== 'pdf') return 0;
+  await DB.del('pdfs', n.id); n.archived = true; await DB.put('notes', n.id, n); return n.size || 0;
+}
+async function restoreFrom(n, file){
+  const bytes = await file.arrayBuffer();
+  const doc = await loadPdf(bytes); const np = doc.numPages; doc.destroy();
+  await DB.put('pdfs', n.id, bytes);
+  n.archived = false; n.size = bytes.byteLength; n.updated = Date.now();
+  await DB.put('notes', n.id, n);
+  return np === n.pages.length;
+}
+function restoreSheet(n){
+  sheet((sh, close) => {
+    sh.append(h('h2',{}, 'Plano archivado'),
+      h('p',{}, '«' + n.title + '» está archivado para ahorrar espacio. Tus notas, medidas y fotos siguen guardadas. Elige otra vez el PDF (de la nube o del móvil) y se recupera todo.'),
+      acts(h('button',{class:'btn', onclick:() => close()}, 'Cancelar'),
+        h('button',{class:'btn pri', onclick:() => { close(); const inp = $('#reIn'); inp.value = ''; inp.onchange = async () => {
+          const f = inp.files[0]; if(!f) return;
+          const name = f.name.replace(/\.pdf$/i,'');
+          if(name !== n.title && !(await confirmSheet('¿Es el mismo plano?', 'El archivo se llama «' + name + '» y el plano archivado «' + n.title + '». Si no es el mismo, las notas pueden quedar descolocadas.', 'Usarlo igualmente'))) return;
+          const done = busy('Recuperando plano…');
+          try { const okPages = await restoreFrom(n, f); done(); if(!okPages) toast('Ojo: el PDF tiene distinto número de páginas que el archivado', 4500); await refreshLib(); openNote(n.id); }
+          catch(e){ done(); toast('No se pudo abrir ese PDF'); }
+        }; inp.click(); }}, 'Elegir el PDF')));
+  });
+}
+async function spaceSheet(){
+  let est = null; try { est = await navigator.storage.estimate(); } catch(e){}
+  const live = notes.filter(n => n.kind === 'pdf' && !n.archived);
+  const known = live.reduce((a, n) => a + (n.size || 0), 0);
+  const annotated = new Set(); for(const n of live) if(await hasNotes(n.id)) annotated.add(n.id);
+  sheet((sh, close) => {
+    sh.append(h('h2',{}, 'Espacio'));
+    if(est && est.quota){
+      const pct = Math.min(100, est.usage / est.quota * 100);
+      sh.append(h('p',{}, 'La app ocupa ' + fmtMB(est.usage) + '. Disponible para ella: ' + fmtMB(est.quota - est.usage) + '.'), h('div',{class:'spacebar'}, h('i',{style:'width:' + Math.max(1, pct) + '%'})));
+    }
+    sh.append(h('p',{}, live.length + ' planos con PDF guardado' + (known ? ' (' + fmtMB(known) + ')' : '') + ' · ' + notes.filter(n => n.archived).length + ' archivados.'));
+    sh.append(h('p',{style:'color:var(--ink);font-weight:600;margin-top:14px'}, 'Archivar planos que no has abierto en…'));
+    const old = d => live.filter(n => !annotated.has(n.id) && !n.superseded && (Date.now() - (n.opened || n.created || n.updated)) > d*864e5 && (!curObra || n.obra === curObra));
+    const ch = h('div',{class:'chips'});
+    [7, 30, 90].forEach(d => { const L = old(d); ch.append(chipBtn(d + ' días · ' + L.length + (L.some(n => n.size) ? ' (' + fmtMB(L.reduce((a,n) => a + (n.size||0), 0)) + ')' : ''), false, async () => {
+      if(!L.length){ toast('No hay planos así'); return; }
+      if(!(await confirmSheet('Archivar ' + L.length + ' planos', 'Son planos sin anotaciones. Se borra su PDF del móvil y se conservan la miniatura, la zona y la instalación. Para volver a usarlo, se elige otra vez el PDF.', 'Archivar'))) return;
+      let freed = 0; for(const n of L) freed += await archiveNote(n); await refreshLib(); toast(L.length + ' planos archivados' + (freed ? ' · ' + fmtMB(freed) + ' liberados' : ''));
+    })); });
+    sh.append(ch, h('p',{}, (curObra ? 'Solo de la obra seleccionada. ' : 'De todas las obras. ') + 'Solo se archivan planos sin anotaciones' + (annotated.size ? (annotated.size === 1 ? ': el que tiene anotaciones no se toca.' : ': los ' + annotated.size + ' que tienen anotaciones no se tocan.') : '.')));
+    const sup = live.filter(n => n.superseded && !annotated.has(n.id));
+    if(sup.length) sh.append(h('button',{class:'btn wide', onclick:async () => { close(); let fr = 0; for(const n of sup) fr += await archiveNote(n); await refreshLib(); toast(sup.length + ' revisiones anteriores archivadas'); }}, 'Archivar ' + sup.length + ' revisiones anteriores sin anotaciones'));
+    sh.append(acts(h('button',{class:'btn pri', onclick:() => close()}, 'Cerrar')));
+  });
+}
+$('#bSpace').onclick = spaceSheet;
+async function updSpaceBtn(){ try { const e = await navigator.storage.estimate(); $('#bSpace').textContent = 'Espacio ocupado: ' + fmtMB(e.usage) + ' · Liberar espacio'; } catch(err){ $('#bSpace').textContent = 'Liberar espacio'; } }
 $('#q').addEventListener('input', renderLib);
 $('#bImport').onclick = () => sheet((sh, close) => {
   sh.append(h('h2',{}, 'Importar planos'), h('div',{class:'menu'},
@@ -609,9 +690,10 @@ async function openNote(id){
   const meta = await DB.get('notes', id); if(!meta) return;
   const ann = await DB.get('ann', id) || {id, pages: meta.pages.map(()=>({strokes:[],texts:[],measures:[],scale:null}))};
   let pdf = null;
+  if(meta.archived){ restoreSheet(meta); return; }
   if(meta.kind==='pdf'){
     const done = busy('Cargando plano…');
-    try { const bytes = await DB.get('pdfs', id); pdf = await loadPdf(bytes); }
+    try { const bytes = await DB.get('pdfs', id); if(!bytes){ done(); meta.archived = true; await DB.put('notes', id, meta); restoreSheet(meta); return; } if(!meta.size) meta.size = bytes.byteLength; pdf = await loadPdf(bytes); }
     catch(e){ done(); toast('No se pudo cargar el PDF de esta nota'); return; }
     done();
   }
