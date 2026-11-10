@@ -659,15 +659,25 @@ async function updSpaceBtn(){ try { const e = await navigator.storage.estimate()
 $('#q').addEventListener('input', renderLib);
 $('#bImport').onclick = () => sheet((sh, close) => {
   sh.append(h('h2',{}, 'Importar planos'), h('div',{class:'menu'},
-    h('button',{onclick:() => { close(); $('#file').click(); }}, svgIcon('i-pdf'), 'Elegir archivos PDF o un ZIP'),
+    h('button',{onclick:() => { close(); pickFiles(); }}, svgIcon('i-pdf'), 'Elegir archivos PDF o un ZIP'),
     h('button',{onclick:() => { close(); $('#dirIn').click(); }}, svgIcon('i-list'), 'Elegir una carpeta completa (con subcarpetas)')),
     h('p',{style:'margin-top:12px'}, 'Muchos planos de golpe: descarga la carpeta de OneDrive como ZIP y elige ese único archivo; se importan todos los PDF de dentro, también los de subcarpetas. También puedes mantener pulsado un PDF y elegir «Seleccionar todo».'),
     acts(h('button',{class:'btn', onclick:() => close()}, 'Cancelar')));
 });
-$('#dirIn').onchange = e => handleFiles(e);
-$('#file').onchange = e => handleFiles(e);
-async function handleFiles(e){
-  const raw = [...e.target.files]; e.target.value = '';
+$('#dirIn').onchange = e => { const l = [...e.target.files]; e.target.value = ''; handleFiles(l); };
+$('#file').onchange = e => { const l = [...e.target.files]; e.target.value = ''; handleFiles(l); };
+async function pickFiles(){
+  // Selector moderno (Chrome 132+ en Android): permite elegir varios archivos también en OneDrive
+  if(window.showOpenFilePicker && !prefs.legacyPicker){
+    try {
+      const hs = await window.showOpenFilePicker({multiple:true, types:[{description:'Planos PDF o ZIP', accept:{'application/pdf':['.pdf'], 'application/zip':['.zip']}}]});
+      const l = []; for(const h of hs) l.push(await h.getFile());
+      handleFiles(l); return;
+    } catch(err){ if(err && err.name === 'AbortError') return; console.warn(err); }
+  }
+  $('#file').click();
+}
+async function handleFiles(raw){
   const files = raw.filter(f => /\.pdf$/i.test(f.name) || f.type === 'application/pdf');
   const zips = raw.filter(f => /\.zip$/i.test(f.name) || /zip/.test(f.type));
   if(zips.length){
