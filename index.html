@@ -128,6 +128,12 @@ textarea.field{height:110px;padding:10px 12px;resize:vertical}
 .btn.wide{width:100%;justify-content:center;box-shadow:none;background:var(--surface2);border:1px solid var(--line)}
 .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp 1s linear infinite;vertical-align:-2px}
 @keyframes sp{to{transform:rotate(360deg)}}
+.photo{display:block;width:100%;max-height:55vh;object-fit:contain;border-radius:12px;background:#000;margin-bottom:8px}
+.pgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pcell{aspect-ratio:1;border-radius:10px;background:var(--surface2) center/cover no-repeat;position:relative}
+.pcell span{position:absolute;left:6px;top:6px;background:#1f2a44;color:#fff;font-weight:700;font-size:12px;min-width:22px;height:22px;border-radius:11px;display:grid;place-items:center;padding:0 5px}
+.srcbtns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
+.srcbtns .btn{height:56px;justify-content:center;box-shadow:none;background:var(--surface2);border:1px solid var(--line)}
 #toast{position:fixed;left:50%;bottom:calc(80px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#1c1f26;color:#fff;padding:10px 14px;border-radius:12px;font-size:14px;z-index:40;max-width:calc(100% - 32px);box-shadow:0 6px 20px rgba(0,0,0,.3)}
 .busy{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:rgba(0,0,0,.25);color:#fff;font-weight:600}
 .busy div{background:#1c1f26;padding:14px 18px;border-radius:14px}
@@ -155,6 +161,7 @@ textarea.field{height:110px;padding:10px 12px;resize:vertical}
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="i-pdf" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5"/><path d="M12 11v6M9 14l3 3 3-3"/></symbol>
     <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+    <symbol id="i-cam" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 011 1v10a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z"/><circle cx="12" cy="13.5" r="3.5"/></symbol>
     <symbol id="i-fit" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
   </defs>
 </svg>
@@ -189,6 +196,7 @@ textarea.field{height:110px;padding:10px 12px;resize:vertical}
     <button class="ib" data-tool="hl" title="Rotulador"><svg class="i"><use href="#i-hl"/></svg></button>
     <button class="ib" data-tool="eraser" title="Borrador"><svg class="i"><use href="#i-eraser"/></svg></button>
     <button class="ib" data-tool="text" title="Texto"><svg class="i"><use href="#i-text"/></svg></button>
+    <button class="ib" data-tool="foto" title="Foto de obra"><svg class="i"><use href="#i-cam"/></svg></button>
     <button class="ib" id="tColor" title="Color y grosor"><span class="sw" id="swatch"></span></button>
     <span class="sep"></span>
     <button class="ib" data-tool="len" title="Medir longitud"><svg class="i"><use href="#i-len"/></svg></button>
@@ -212,6 +220,8 @@ textarea.field{height:110px;padding:10px 12px;resize:vertical}
   </div>
 </section>
 
+<input type="file" id="camIn" accept="image/*" capture="environment" hidden>
+<input type="file" id="galIn" accept="image/*" hidden>
 <div id="toast" hidden></div>
 
 <script src="lib/pdf.min.js"></script>
@@ -237,12 +247,12 @@ const savePrefs = () => { try { localStorage.setItem('notasObra.prefs', JSON.str
 
 /* ---------- Almacenamiento: IndexedDB con respaldo en memoria ---------- */
 const DB = {
-  db:null, mem:{notes:new Map(), pdfs:new Map(), ann:new Map()},
+  db:null, mem:{notes:new Map(), pdfs:new Map(), ann:new Map(), photos:new Map()},
   async open(){
     try {
       this.db = await new Promise((res, rej) => {
-        const r = indexedDB.open('notasObra', 1);
-        r.onupgradeneeded = () => { const d = r.result; ['notes','pdfs','ann'].forEach(s => { if(!d.objectStoreNames.contains(s)) d.createObjectStore(s); }); };
+        const r = indexedDB.open('notasObra', 2);
+        r.onupgradeneeded = () => { const d = r.result; ['notes','pdfs','ann','photos'].forEach(s => { if(!d.objectStoreNames.contains(s)) d.createObjectStore(s); }); };
         r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
         setTimeout(() => rej(new Error('IndexedDB no responde')), 4000);
       });
@@ -345,7 +355,7 @@ function noteMenu(n){
   sheet((sh, close) => {
     sh.append(h('h2',{}, n.title), h('div',{class:'menu'},
       h('button',{onclick:async () => { close(); const t = await askText('Renombrar', n.title); if(t && t.trim()){ n.title=t.trim(); await DB.put('notes', n.id, n); refreshLib(); } }}, svgIcon('i-text'), 'Renombrar'),
-      h('button',{onclick:async () => { close(); if(await confirmSheet('Eliminar nota', `Se borrará «${n.title}» y todas sus anotaciones de este dispositivo.`)){ await DB.del('notes',n.id); await DB.del('pdfs',n.id); await DB.del('ann',n.id); refreshLib(); } }}, svgIcon('i-trash'), 'Eliminar')));
+      h('button',{onclick:async () => { close(); if(await confirmSheet('Eliminar nota', `Se borrará «${n.title}» y todas sus anotaciones de este dispositivo.`)){ const an = await DB.get('ann', n.id); if(an) for(const pg of an.pages) for(const ph of (pg.photos||[])) await DB.del('photos', ph.photoId); await DB.del('notes',n.id); await DB.del('pdfs',n.id); await DB.del('ann',n.id); refreshLib(); } }}, svgIcon('i-trash'), 'Eliminar')));
   });
 }
 $('#q').addEventListener('input', renderLib);
@@ -360,7 +370,7 @@ $('#file').onchange = async e => {
     const id = uid(), now = Date.now();
     const meta = {id, title:f.name.replace(/\.pdf$/i,''), created:now, updated:now, kind:'pdf', pages, thumb:null};
     await DB.put('pdfs', id, bytes);
-    await DB.put('ann', id, {id, pages: pages.map(() => ({strokes:[], texts:[], measures:[], scale:null}))});
+    await DB.put('ann', id, {id, pages: pages.map(() => ({strokes:[], texts:[], measures:[], photos:[], scale:null}))});
     await DB.put('notes', id, meta);
     doc.destroy();
     done(); openNote(id);
@@ -369,7 +379,7 @@ $('#file').onchange = async e => {
 $('#bBlank').onclick = async () => {
   const id = uid(), now = Date.now();
   const meta = {id, title:'Nota ' + new Date().toLocaleDateString('es-ES'), created:now, updated:now, kind:'blank', pages:[{w:595.28, h:841.89}], thumb:null};
-  await DB.put('ann', id, {id, pages:[{strokes:[], texts:[], measures:[], scale:null}]});
+  await DB.put('ann', id, {id, pages:[{strokes:[], texts:[], measures:[], photos:[], scale:null}]});
   await DB.put('notes', id, meta);
   openNote(id);
 };
@@ -392,6 +402,7 @@ async function openNote(id){
     catch(e){ done(); toast('No se pudo cargar el PDF de esta nota'); return; }
     done();
   }
+  ann.pages.forEach(p => { p.photos = p.photos || []; });
   E = {meta, ann, pdf, pages:[], cam:{x:0,y:0,z:1}, tool: prefs.lastTool || 'pen', undo:[], redo:[], mdraft:null, live:null, hover:null};
   layoutPages();
   $('#lib').hidden = true; $('#ed').hidden = false;
@@ -516,6 +527,7 @@ function draw(){
     if(E.hl && E.hl.pi === p.i){ c.save(); c.strokeStyle = '#9c36b5'; c.lineWidth = 6/z; c.globalAlpha = .55; c.lineCap = 'round'; c.beginPath(); c.moveTo(E.hl.p1[0], E.hl.p1[1]); c.lineTo(E.hl.p2[0], E.hl.p2[1]); c.stroke(); c.restore(); }
     c.restore();
     drawLabels(c, p, z);
+    drawPins(c, p, z);
   }
   if(E.mdraft) drawDraftLabel(c, z);
   drawLoupe();
@@ -719,12 +731,14 @@ function pos(e){ const r = view.getBoundingClientRect(); return [e.clientX - r.l
 function toDoc(s){ return [E.cam.x + s[0]/E.cam.z, E.cam.y + s[1]/E.cam.z]; }
 function pageAt(d, tol=0){ return E.pages.find(p => d[0] >= p.x - tol && d[0] <= p.x + p.w + tol && d[1] >= p.y - tol && d[1] <= p.y + p.h + tol); }
 function startNav(){
+  const fresh = !gesture || gesture.mode === 'pending';
   if(gesture && gesture.timer) clearTimeout(gesture.timer);
   const pts = [...ptrs.values()];
   if(!pts.length){ gesture = null; return; }
+  const tap0 = fresh && pts.length === 1 && !(gesture && gesture.mode === 'pending') ? {s:pts[0].s.slice(), t:Date.now()} : null;
   const mid = pts.length > 1 ? [(pts[0].s[0]+pts[1].s[0])/2, (pts[0].s[1]+pts[1].s[1])/2] : pts[0].s;
   const dist = pts.length > 1 ? Math.hypot(pts[0].s[0]-pts[1].s[0], pts[0].s[1]-pts[1].s[1]) : 0;
-  gesture = {mode:'nav', mid, dist, cam:{...E.cam}};
+  gesture = {mode:'nav', mid, dist, cam:{...E.cam}, tap0};
 }
 view.addEventListener('pointerdown', e => {
   if(!E) return;
@@ -736,7 +750,7 @@ view.addEventListener('pointerdown', e => {
   if(gesture && gesture.mode === 'draw' && ptrs.size > 1 && gesture.type === 'touch'){ abortDraw(); }
   if(gesture && gesture.mode === 'draw') return;
   if(E.tool === 'hand' || touchNav || e.button === 1 || (gesture && gesture.mode === 'nav')){ startNav(); return; }
-  if(['len','poly','area','cal','cota'].includes(E.tool) && e.pointerType === 'touch'){
+  if(['len','poly','area','cal','cota','foto'].includes(E.tool) && e.pointerType === 'touch'){
     // tocar = punto · arrastrar = mover · mantener = afinar con lupa
     const pend = {mode:'pending', id:e.pointerId, s, ev:e};
     pend.timer = setTimeout(() => { if(gesture === pend){ gesture = null; startDraw(pend.ev, ptrs.get(pend.id) ? ptrs.get(pend.id).s : pend.s); requestDraw(); } }, 260);
@@ -762,6 +776,7 @@ view.addEventListener('pointermove', e => {
   }
   if(gesture.mode === 'nav'){
     const pts = [...ptrs.values()]; const c = E.cam, g = gesture;
+    if(g.tap0 && Math.hypot(s[0]-g.tap0.s[0], s[1]-g.tap0.s[1]) > 8) g.tap0 = null;
     if(pts.length > 1 && g.dist > 0){
       const mid = [(pts[0].s[0]+pts[1].s[0])/2, (pts[0].s[1]+pts[1].s[1])/2];
       const dist = Math.hypot(pts[0].s[0]-pts[1].s[0], pts[0].s[1]-pts[1].s[1]);
@@ -789,7 +804,7 @@ function endPointer(e){
     return;
   }
   if(gesture && gesture.mode === 'draw' && gesture.id === e.pointerId){ endDraw(e, e.type === 'pointercancel'); gesture = null; }
-  else if(gesture && gesture.mode === 'nav'){ ptrs.size ? startNav() : (gesture = null); lastMove = Date.now(); setTimeout(requestDraw, 200); }
+  else if(gesture && gesture.mode === 'nav'){ const tp = gesture.tap0; if(!ptrs.size && tp && Date.now() - tp.t < 500 && !pinTapAt(tp.s) && E.tool === 'foto'){ const d = toDoc(tp.s), pg = pageAt(d); if(pg) addPhotoAt(pg.i, [d[0]-pg.x, d[1]-pg.y]); } ptrs.size ? startNav() : (gesture = null); lastMove = Date.now(); setTimeout(requestDraw, 200); }
 }
 view.addEventListener('pointerup', endPointer);
 view.addEventListener('pointercancel', endPointer);
@@ -852,6 +867,11 @@ async function endDraw(e, cancelled){
   if(cancelled){ abortDraw(); return; }
   if(g.t === 'pen' || g.t === 'hl'){ pushOp({k:'add', pi:g.pi, list:'strokes', item:g.item}); }
   else if(g.t === 'eraser'){ if(g.removed.length) pushOp({k:'del', items:g.removed}); }
+  else if(g.t === 'foto'){
+    const s = pos(e); if(Math.hypot(s[0]-g.start[0], s[1]-g.start[1]) > 12) return;
+    if(pinTapAt(s)) return;
+    const L = local(g.pi, s); addPhotoAt(g.pi, L);
+  }
   else if(g.t === 'cota'){
     const s = pos(e); if(Math.hypot(s[0]-g.start[0], s[1]-g.start[1]) > 12) return;
     pickDim(g.pi, local(g.pi, s)).catch(err => { console.warn(err); toast('No se pudo leer la cota'); });
@@ -879,6 +899,7 @@ function eraseAt(pi, L){
   const del = (list, item) => { const idx = pg[list].indexOf(item); if(idx<0) return; pg[list].splice(idx,1); g.removed.push({pi, list, item, idx}); };
   [...pg.strokes].forEach(s => { if(hitSeg(s.p, 3, r + s.w/2)) del('strokes', s); });
   [...pg.measures].forEach(m => { const flat = m.p.flat(); const P2 = m.k==='area' ? flat.concat(m.p[0]) : flat; if(hitSeg(P2, 2, r)) del('measures', m); });
+  [...(pg.photos||[])].forEach(ph => { if(Math.hypot(L[0]-ph.x, L[1]-ph.y + 16/E.cam.z) < 16/E.cam.z) del('photos', ph); });
   [...pg.texts].forEach(t => { ctx.font = `${t.s}px system-ui`; const lines = t.txt.split('\n'); const w = Math.max(...lines.map(l=>ctx.measureText(l).width)); if(L[0] >= t.x - r && L[0] <= t.x + w + r && L[1] >= t.y - r && L[1] <= t.y + lines.length*t.s*1.25 + r) del('texts', t); });
   requestDraw();
 }
@@ -1296,6 +1317,83 @@ async function pickDim(pi, L){
   E.hl = null; requestDraw();
 }
 
+/* ---------- Fotos de obra ---------- */
+function drawPins(c, p, z){
+  for(const ph of (E.ann.pages[p.i].photos || [])){
+    const x = (p.x + ph.x - E.cam.x)*z, y = (p.y + ph.y - E.cam.y)*z;
+    if(x < -30 || y < -40 || x > W + 30 || y > H + 30) continue;
+    c.save(); c.fillStyle = '#1f2a44'; c.strokeStyle = '#fff'; c.lineWidth = 2;
+    c.beginPath(); c.moveTo(x, y); c.arc(x, y - 20, 12, Math.PI*0.72, Math.PI*0.28, false); c.closePath(); c.fill(); c.stroke();
+    c.fillStyle = '#fff'; c.font = '700 12px system-ui,-apple-system,Roboto,sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(String(ph.n), x, y - 20);
+    c.restore();
+  }
+}
+function pinAt(s){
+  for(const p of E.pages) for(const ph of (E.ann.pages[p.i].photos || [])){
+    const x = (p.x + ph.x - E.cam.x)*E.cam.z, y = (p.y + ph.y - E.cam.y)*E.cam.z;
+    if(Math.hypot(s[0] - x, s[1] - (y - 16)) < 20) return {pi:p.i, ph};
+  }
+  return null;
+}
+function pinTapAt(s){ const hit = pinAt(s); if(hit){ openPhoto(hit.pi, hit.ph); return true; } return false; }
+function nextPhotoNo(){ let n = 0; E.ann.pages.forEach(pg => pg.photos.forEach(ph => n = Math.max(n, ph.n))); return n + 1; }
+async function processImage(file){
+  let bmp; try { bmp = await createImageBitmap(file, {imageOrientation:'from-image'}); } catch(e){ bmp = await createImageBitmap(file); }
+  const M = 1600, k = Math.min(1, M / Math.max(bmp.width, bmp.height)), w = Math.round(bmp.width*k), hh = Math.round(bmp.height*k);
+  const c = document.createElement('canvas'); c.width = w; c.height = hh; c.getContext('2d').drawImage(bmp, 0, 0, w, hh);
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.82));
+  return {blob, w, h:hh};
+}
+function addPhotoAt(pi, L){
+  sheet((sh, close) => {
+    const pick = inp => { close(); inp.value = ''; inp.onchange = async () => {
+      const f = inp.files[0]; if(!f) return;
+      const done = busy('Guardando foto…');
+      try {
+        const img = await processImage(f); const photoId = uid();
+        await DB.put('photos', photoId, img);
+        const pin = {id:uid(), x:+L[0].toFixed(2), y:+L[1].toFixed(2), n:nextPhotoNo(), photoId, caption:'', t:Date.now()};
+        doOp({k:'add', pi, list:'photos', item:pin}); done(); openPhoto(pi, pin, true);
+      } catch(err){ done(); console.error(err); toast('No se pudo guardar la foto'); }
+    }; inp.click(); };
+    sh.append(h('h2',{}, 'Foto en este punto'), h('div',{class:'srcbtns'},
+      h('button',{class:'btn', onclick:() => pick($('#camIn'))}, svgIcon('i-cam'), 'Hacer foto'),
+      h('button',{class:'btn', onclick:() => pick($('#galIn'))}, svgIcon('i-pdf'), 'Galería')),
+      acts(h('button',{class:'btn', onclick:() => close()}, 'Cancelar')));
+  });
+}
+async function openPhoto(pi, pin, isNew){
+  const rec = await DB.get('photos', pin.photoId);
+  const url = rec ? URL.createObjectURL(rec.blob) : null;
+  await sheet((sh, close) => {
+    const cap = h('textarea',{class:'field', placeholder:'Comentario (opcional): qué se ve, qué hay que corregir…', style:'height:80px'}); cap.value = pin.caption || '';
+    const save = () => { if((pin.caption || '') !== cap.value){ pin.caption = cap.value; changed(); } };
+    cap.addEventListener('blur', save);
+    sh.append(h('h2',{}, 'Foto ' + pin.n + ' · pág. ' + (pi+1)),
+      url ? h('img',{class:'photo', src:url, alt:'Foto ' + pin.n}) : h('p',{}, 'La imagen no está en este dispositivo.'),
+      h('p',{}, new Date(pin.t).toLocaleString('es-ES', {dateStyle:'medium', timeStyle:'short'})), cap,
+      acts(
+        h('button',{class:'btn danger', onclick:() => { const Lst = E.ann.pages[pi].photos; const idx = Lst.indexOf(pin); if(idx >= 0){ Lst.splice(idx,1); pushOp({k:'del', items:[{pi, list:'photos', item:pin, idx}]}); } close(); toast('Foto borrada (puedes deshacer)'); }}, 'Borrar'),
+        h('button',{class:'btn pri', onclick:() => { save(); close(); }}, 'Hecho')));
+    if(isNew) setTimeout(() => cap.focus(), 300);
+  });
+  if(url) URL.revokeObjectURL(url);
+}
+function photosSheet(){
+  const all = []; E.ann.pages.forEach((pg, pi) => pg.photos.forEach(ph => all.push({pi, ph}))); all.sort((a,b) => a.ph.n - b.ph.n);
+  const urls = [];
+  sheet((sh, close) => {
+    sh.append(h('h2',{}, 'Fotos (' + all.length + ')'));
+    if(!all.length) sh.append(h('p',{}, 'Elige la herramienta de cámara y toca el plano donde quieras poner una foto.'));
+    const grid = h('div',{class:'pgrid'}); sh.append(grid, acts(h('button',{class:'btn pri', onclick:() => close()}, 'Cerrar')));
+    for(const {pi, ph} of all){
+      const cell = h('button',{class:'pcell', title:ph.caption || ('Foto ' + ph.n), onclick:() => { close(); const p = E.pages[pi]; E.cam.x = p.x + ph.x - W/2/E.cam.z; E.cam.y = p.y + ph.y - H/2/E.cam.z; clampCam(); requestDraw(); openPhoto(pi, ph); }}, h('span',{}, String(ph.n)));
+      grid.append(cell);
+      DB.get('photos', ph.photoId).then(r => { if(r){ const u = URL.createObjectURL(r.blob); urls.push(u); cell.style.backgroundImage = `url(${u})`; } });
+    }
+  }).then(() => urls.forEach(u => URL.revokeObjectURL(u)));
+}
+
 /* ---------- Lista de medidas ---------- */
 $('#eList').onclick = () => {
   sheet((sh, close) => {
@@ -1347,6 +1445,7 @@ $('#eMore').onclick = () => {
     const sw = h('span',{class:'sw2' + (prefs.penOnly ? ' on' : '')});
     sh.append(h('h2',{}, E.meta.title), h('div',{class:'menu'},
       h('button',{onclick:() => { prefs.penOnly = !prefs.penOnly; savePrefs(); sw.classList.toggle('on', prefs.penOnly); }}, svgIcon('i-pen'), 'Solo el lápiz escribe (el dedo mueve)', sw),
+      h('button',{onclick:() => { close(); photosSheet(); }}, svgIcon('i-cam'), 'Fotos de la nota (' + E.ann.pages.reduce((a,p) => a + p.photos.length, 0) + ')'),
       h('button',{onclick:() => { close(); scaleSheet(currentPage()); }}, svgIcon('i-scale'), 'Escala de la página'),
       h('button',{onclick:() => { close(); addPage(); }}, svgIcon('i-plus'), 'Añadir página en blanco'),
       h('button',{onclick:async () => { close(); const t = await askText('Renombrar', E.meta.title); if(t && t.trim()){ E.meta.title = t.trim(); $('#eTitle').textContent = E.meta.title; changed(); } }}, svgIcon('i-text'), 'Renombrar')));
@@ -1355,7 +1454,7 @@ $('#eMore').onclick = () => {
 $('#eTitle').onclick = async () => { const t = await askText('Renombrar', E.meta.title); if(t && t.trim()){ E.meta.title = t.trim(); $('#eTitle').textContent = E.meta.title; changed(); } };
 function addPage(){
   E.meta.pages.push({w:595.28, h:841.89, blank:true});
-  E.ann.pages.push({strokes:[], texts:[], measures:[], scale:null});
+  E.ann.pages.push({strokes:[], texts:[], measures:[], photos:[], scale:null});
   const keep = E.pages.map(p => p.base);
   layoutPages(); keep.forEach((b,i) => { E.pages[i].base = b; });
   const p = E.pages.at(-1); E.cam.y = p.y - 12/E.cam.z; clampCam(); changed(); toast('Página añadida');
@@ -1426,11 +1525,45 @@ async function buildPdf(){
       pg.drawText(txt, {x:r1[0], y:r1[1], size, font:fontB, color:PDFLib.rgb(.11,.12,.15), rotate:degrees(ang)});
     }
   }
+  // fotos: marcadores en el plano + páginas finales
+  const fotos = [];
+  for(let i = 0; i < E.meta.pages.length; i++){
+    const A = E.ann.pages[i]; if(!A.photos || !A.photos.length) continue;
+    const pg = doc.getPage(i); let conv;
+    if(i < srcCount){ const vp = (await E.pdf.getPage(i+1)).getViewport({scale:1}); conv = (x,y) => vp.convertToPdfPoint(x,y); }
+    else { const hgt = E.meta.pages[i].h; conv = (x,y) => [x, hgt - y]; }
+    const sc = Math.max(E.meta.pages[i].w, E.meta.pages[i].h) / 842;
+    for(const ph of A.photos){
+      const r = conv(ph.x, ph.y), R = 6*sc;
+      pg.drawCircle({x:r[0], y:r[1], size:R, color:PDFLib.rgb(.12,.16,.27), borderColor:PDFLib.rgb(1,1,1), borderWidth:1*sc});
+      const t = String(ph.n), ts = 7*sc, tw = fontB.widthOfTextAtSize(t, ts);
+      pg.drawText(t, {x:r[0] - tw/2, y:r[1] - ts*0.36, size:ts, font:fontB, color:PDFLib.rgb(1,1,1)});
+      fotos.push({pi:i, ph});
+    }
+  }
+  fotos.sort((a,b) => a.ph.n - b.ph.n);
+  let fp = null, slot = 0;
+  for(const {pi, ph} of fotos){
+    const rec = await DB.get('photos', ph.photoId); if(!rec) continue;
+    if(!fp || slot === 2){ fp = doc.addPage([595.28, 841.89]); slot = 0; fp.drawText(safe(fontB, E.meta.title + ' · Fotos'), {x:40, y:805, size:11, font:fontB, color:PDFLib.rgb(.11,.12,.15)}); }
+    const img = await doc.embedJpg(await rec.blob.arrayBuffer());
+    const boxW = 515, boxH = 320, top = 785 - slot * 385;
+    const k = Math.min(boxW / img.width, boxH / img.height), iw = img.width * k, ih = img.height * k;
+    fp.drawImage(img, {x:40 + (boxW - iw)/2, y:top - ih, width:iw, height:ih});
+    const head = 'Foto ' + ph.n + ' · página ' + (pi+1) + ' del plano · ' + new Date(ph.t).toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'});
+    fp.drawText(safe(fontB, head), {x:40, y:top - boxH - 16, size:9.5, font:fontB, color:PDFLib.rgb(.11,.12,.15)});
+    if(ph.caption){
+      const words = safe(font, ph.caption.replace(/\s+/g,' ')).split(' '); let line = '', y = top - boxH - 30, n = 0;
+      for(const w of words){ const tryL = line ? line + ' ' + w : w; if(font.widthOfTextAtSize(tryL, 9.5) > boxW && line){ fp.drawText(line, {x:40, y, size:9.5, font, color:PDFLib.rgb(.25,.27,.3)}); y -= 13; line = w; if(++n > 2) break; } else line = tryL; }
+      if(line && n <= 2) fp.drawText(line, {x:40, y, size:9.5, font, color:PDFLib.rgb(.25,.27,.3)});
+    }
+    slot++;
+  }
   return await doc.save();
 }
 
 /* ---------- Arranque ---------- */
-window.__notas = { get E(){ return E; } };
+window.__notas = { get E(){ return E; }, get g(){ return gesture; }, get n(){ return ptrs.size; } };
 // Actualiza la etiqueta de escala al moverse por el documento
 let lastTagPage = -1;
 setInterval(() => { if(E){ const p = currentPage(); if(p !== lastTagPage){ lastTagPage = p; updScaleTag(); } } }, 300);
