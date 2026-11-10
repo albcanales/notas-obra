@@ -937,7 +937,7 @@ function scaleSheet(pi){
       h('h2',{}, 'Escala · página ' + (pi+1)),
       h('p',{}, 'Actual: ' + (cur ? cur.label : 'sin escala') + '.'),
       auto,
-      isPdf ? h('button',{class:'btn wide', onclick:() => { close(); setTool('cota'); E.calAll = all.checked; toast('Toca el número de una cota del plano', 3500); }}, svgIcon('i-len'), 'Tocar una cota del plano') : null,
+      isPdf ? h('button',{class:'btn wide', onclick:() => { close(); setTool('cota'); E.calAll = all.checked; toast('Toca el número de una cota o una etiqueta «L = …» de un tramo', 3500); }}, svgIcon('i-len'), 'Tocar una cota o una «L =» del plano') : null,
       h('p',{style:'margin-top:14px'}, 'O elige la escala a mano (exacta si el PDF sale de CAD al tamaño de papel real):'),
       chips, h('div',{class:'row'}, custom),
       h('label',{class:'check'}, all, 'Aplicar a todas las páginas'),
@@ -1030,8 +1030,89 @@ async function analyzePage(pi){
     if((x1-x0+1)*(y1-y0+1) > 400) continue;
     for(let gx=x0; gx<=x1; gx++) for(let gy=y0; gy<=y1; gy++){ const key = gx + ',' + gy; let c = grid.get(key); if(!c) grid.set(key, c = []); c.push(i); }
   }
-  const res = {texts, segs, grid, G, w:vp.width, h:vp.height};
+  const lines = buildLines(texts);
+  const res = {texts, lines, segs, grid, G, w:vp.width, h:vp.height};
   E.anal[pi] = res; return res;
+}
+function buildLines(texts){
+  // une trozos de texto de la misma línea (pdf.js a veces los parte)
+  const it = texts.map(t => ({t, ang: Math.round(Math.atan2(t.uy, t.ux) * 100), base: -t.x*t.uy + t.y*t.ux, along: t.x*t.ux + t.y*t.uy}));
+  it.sort((a,b) => a.ang - b.ang || a.base - b.base);
+  const out = []; let i = 0;
+  while(i < it.length){
+    let j = i; while(j+1 < it.length && it[j+1].ang === it[i].ang && Math.abs(it[j+1].base - it[i].base) <= it[i].t.h * 0.3) j++;
+    const cl = it.slice(i, j+1).sort((a,b) => a.along - b.along); i = j+1;
+    let cur = null;
+    for(const c of cl){
+      if(cur && c.along - cur.end <= Math.max(cur.h, c.t.h) * 1.5){ cur.parts.push(c.t); cur.end = Math.max(cur.end, c.along + c.t.w); cur.h = Math.max(cur.h, c.t.h); }
+      else { cur = {parts:[c.t], start:c.along, end:c.along + c.t.w, h:c.t.h}; out.push(cur); }
+    }
+  }
+  return out.filter(l => l.parts.length > 1 || /L\s*=/.test(l.parts[0].str)).map(l => {
+    const f = l.parts[0], w = l.end - l.start, hh = l.h;
+    return {str: l.parts.map(p => p.str).join(' '), ux:f.ux, uy:f.uy, w, h:hh, x:f.x, y:f.y,
+      cx: f.x + f.ux*w/2 + f.uy*hh*0.35, cy: f.y + f.uy*w/2 - f.ux*hh*0.35};
+  });
+}
+function parseRunLen(str){
+  // «L = 19,4 m», «L=12.50m», «Long. 8,2 m»
+  const m = str.match(/(?:^|[^A-Za-z])(?:L|Long\.?|Longitud)\s*[=:]?\s*(\d{1,4}(?:[.,]\d{1,3})?)\s*(m|cm|mm)?\b/i);
+  if(!m) return null;
+  const v = parseFloat(m[1].replace(',', '.')); if(!(v > 0)) return null;
+  const u = (m[2] || 'm').toLowerCase();
+  return {v: v * ({m:1, cm:0.01, mm:0.001}[u]), unit:'m', dec:true, explicit:true};
+}
+function matchRunLine(A, t){
+  // tubería/tramo paralelo a la etiqueta: se toma su tramo recto completo (sin cortar en cruces)
+  const tol = Math.max(t.h * 3, 4), reach = 1800, G = A.G, S = A.segs;
+  const nx = -t.uy, ny = t.ux;
+  const seen = new Set(), groups = new Map();
+  const gx0 = Math.floor((t.cx - tol - t.w)/G), gx1 = Math.floor((t.cx + tol + t.w)/G), gy0 = Math.floor((t.cy - tol - t.w)/G), gy1 = Math.floor((t.cy + tol + t.w)/G);
+  const near = [];
+  for(let gx = gx0; gx <= gx1; gx++) for(let gy = gy0; gy <= gy1; gy++){ const c = A.grid.get(gx + ',' + gy); if(c) for(const i of c) if(!seen.has(i)){ seen.add(i); near.push(i); } }
+  // grupos de líneas paralelas cercanas a la etiqueta
+  const offs = new Set();
+  for(const i of near){
+    const dx = S[i+2]-S[i], dy = S[i+3]-S[i+1], L = Math.hypot(dx, dy);
+    if(Math.abs(dx/L * t.uy - dy/L * t.ux) > 0.03) continue;
+    const o1 = (S[i]-t.cx)*nx + (S[i+1]-t.cy)*ny, o2 = (S[i+2]-t.cx)*nx + (S[i+3]-t.cy)*ny;
+    if(Math.abs(o1-o2) > 0.6) continue;
+    const off = (o1+o2)/2; if(Math.abs(off) > tol) continue;
+    offs.add(Math.round(off*2)/2);
+  }
+  if(!offs.size) return null;
+  // recoger todos los trozos colineales a lo largo de la línea (más allá de la etiqueta)
+  const all = new Set();
+  const steps = Math.ceil(reach / G);
+  for(let k = -steps; k <= steps; k++){
+    const px = t.cx + t.ux * k * G, py = t.cy + t.uy * k * G;
+    for(let ex = -1; ex <= 1; ex++) for(let ey = -1; ey <= 1; ey++){ const c = A.grid.get((Math.floor(px/G)+ex) + ',' + (Math.floor(py/G)+ey)); if(c) for(const i of c) all.add(i); }
+  }
+  // también celdas desplazadas al offset de cada grupo
+  let best = null;
+  for(const off of offs){
+    const iv = [];
+    for(const i of all){
+      const dx = S[i+2]-S[i], dy = S[i+3]-S[i+1], L = Math.hypot(dx, dy); if(L < 0.3) continue;
+      if(Math.abs(dx/L * t.uy - dy/L * t.ux) > 0.03) continue;
+      const o1 = (S[i]-t.cx)*nx + (S[i+1]-t.cy)*ny, o2 = (S[i+2]-t.cx)*nx + (S[i+3]-t.cy)*ny;
+      if(Math.abs(o1-off) > 0.8 || Math.abs(o2-off) > 0.8) continue;
+      let a = (S[i]-t.cx)*t.ux + (S[i+1]-t.cy)*t.uy, b = (S[i+2]-t.cx)*t.ux + (S[i+3]-t.cy)*t.uy; if(a > b) [a,b] = [b,a];
+      iv.push([a,b]);
+    }
+    iv.sort((p,q) => p[0]-q[0]);
+    const gap = Math.max(3, t.h * 1.2); let cur = null; const merged = [];
+    for(const sg of iv){ if(cur && sg[0] <= cur[1] + gap) cur[1] = Math.max(cur[1], sg[1]); else { cur = sg.slice(); merged.push(cur); } }
+    for(const m of merged){
+      if(m[0] > 0 || m[1] < 0) continue;
+      const L = m[1] - m[0];
+      if(L < t.w + t.h * 3) continue;                                  // descarta recuadros de la propia etiqueta
+      if(!best || Math.abs(off) < Math.abs(best.off) - 0.3) best = {off, a:m[0], b:m[1], L};
+    }
+  }
+  if(!best) return null;
+  const p = (s) => [t.cx + t.ux*s + nx*best.off, t.cy + t.uy*s + ny*best.off];
+  return {L: best.L, p1: p(best.a), p2: p(best.b)};
 }
 function matchDimLine(A, t){
   // busca la línea de cota paralela al texto, justo encima o debajo
@@ -1059,7 +1140,7 @@ function matchDimLine(A, t){
     for(const s of iv){ if(cur && s[0] <= cur[1] + gap) cur[1] = Math.max(cur[1], s[1]); else { cur = s.slice(); merged.push(cur); } }
     for(const m of merged){
       if(m[0] > t.w*0.1 || m[1] < -t.w*0.1) continue;                   // el texto debe quedar dentro de la línea
-      const L = m[1] - m[0]; if(L < t.w * 1.1) continue;
+      const L = m[1] - m[0]; if(L < t.w + t.h * 1.2) continue;
       if(!best || Math.abs(off) < Math.abs(best.off) - 0.3) best = {off, a:m[0], b:m[1], L};
     }
   }
@@ -1110,6 +1191,11 @@ async function detectScale(pi){
     const f = d.unit === 'm' ? 1 : d.unit === 'cm' ? 0.01 : d.unit === 'mm' ? 0.001 : null;
     cands.push({r: d.v / m.L, d, t, m, f});
   }
+  for(const t of A.lines){
+    const d = parseRunLen(t.str); if(!d) continue;
+    const m = matchRunLine(A, t); if(!m) continue;
+    cands.push({r: d.v / m.L, d, t, m, run:true});
+  }
   let dimRes = null;
   if(cands.length){
     let bestC = null;
@@ -1120,8 +1206,10 @@ async function detectScale(pi){
     const need = cands.length >= 6 ? Math.max(3, Math.ceil(cands.length * 0.25)) : 2;
     if(bestC.length >= need || (cands.length === 1)){
       const rs = bestC.map(c => c.r).sort((a,b) => a-b), r = rs[Math.floor(rs.length/2)];
-      const opts = scaleFromRatio(r, bestC.map(c => c.d));
-      if(opts.length) dimRes = {opts, count: bestC.length, total: cands.length, sample: bestC[0]};
+      let opts = scaleFromRatio(r, bestC.map(c => c.d));
+      const nRun = bestC.filter(c => c.run).length;
+      if(nRun * 2 >= bestC.length) opts = opts.filter(o => o.u === 'm');
+      if(opts.length) dimRes = {opts, count: bestC.length, total: cands.length, nRun, sample: bestC[0]};
     }
   }
   // 2) escala escrita en el cajetín
@@ -1145,7 +1233,10 @@ async function detectScale(pi){
     if(fromHint){ const agree = dimRes.opts.find(o => Math.abs(o.n - fromHint.adj)/fromHint.adj < 0.03); if(agree){ pick = agree; conf = 'alta'; } }
     else if(dimRes.count >= 3) conf = 'alta';
     n = pick.n;
-    why.push(dimRes.count + (dimRes.count === 1 ? ' cota del plano encaja' : ' cotas del plano encajan') + ' con esta escala' + (dimRes.total > dimRes.count ? ' (de ' + dimRes.total + ' leídas)' : '') + ', medidas en ' + pick.u + '.');
+    const nD = dimRes.count - dimRes.nRun;
+    const parts = []; if(nD) parts.push(nD + (nD === 1 ? ' cota' : ' cotas')); if(dimRes.nRun) parts.push(dimRes.nRun + (dimRes.nRun === 1 ? ' longitud de tramo (L = …)' : ' longitudes de tramo (L = …)'));
+    why.push(parts.join(' y ') + (dimRes.count === 1 ? ' encaja' : ' encajan') + ' con esta escala' + (dimRes.total > dimRes.count ? ' (de ' + dimRes.total + ' leídas)' : '') + (dimRes.nRun ? '.' : ', medidas en ' + pick.u + '.'));
+    if(dimRes.count === 1) conf = 'media';
     dimRes.opts.filter(o => o !== pick).forEach(o => alts.push({n:o.n, note:'(cotas en ' + o.u + ')'}));
   }
   if(fromHint){
@@ -1168,19 +1259,25 @@ async function pickDim(pi, L){
     const dist = Math.hypot(L[0]-t.cx, L[1]-t.cy);
     if(dist < Math.max(r, t.w*0.7) && (!best || dist < best.dist)) best = {t, d, dist};
   }
+  for(const t of A.lines){
+    const d = parseRunLen(t.str); if(!d) continue;
+    const dist = Math.hypot(L[0]-t.cx, L[1]-t.cy);
+    if(dist < Math.max(r, t.w*0.6) && (!best || dist < best.dist)) best = {t, d, dist, run:true};
+  }
   if(!best){ toast('No hay una cota legible ahí. Toca justo sobre el número, o usa «Calibrar a mano».', 4000); return; }
-  const m = matchDimLine(A, best.t);
+  const m = best.run ? matchRunLine(A, best.t) : matchDimLine(A, best.t);
+  const shown = best.run ? 'L = ' + String(+best.d.v.toFixed(3)).replace('.', ',') + ' m' : best.t.str;
   if(!m){
-    toast('He leído «' + best.t.str + '» pero no encuentro su línea. Márcala tú con los dos extremos.', 4500);
-    E.calValue = best.t.str; setTool('cal'); return;
+    toast('He leído «' + shown + '» pero no encuentro su línea. Marca tú sus dos extremos.', 4500);
+    E.calValue = best.run ? nf(best.d.v, 2) : best.t.str; setTool('cal'); return;
   }
   E.hl = {pi, p1:m.p1, p2:m.p2}; requestDraw(); $('#toast').hidden = true;
   const opts = scaleFromRatio(best.d.v / m.L, [best.d]);
-  const forced = best.d.unit;
+  const forced = best.run ? 'm' : best.d.unit;
   setTool(prefs.lastTool && !['cal','cota'].includes(prefs.lastTool) ? prefs.lastTool : 'len');
   await sheet((sh, close) => {
-    sh.append(h('h2',{}, 'Cota «' + best.t.str + '»'),
-      h('p',{}, 'Línea de cota encontrada (resaltada en morado): ' + nf(m.L * PT_MM, 1) + ' mm en el papel. ¿En qué unidad está la cota?'));
+    sh.append(h('h2',{}, (best.run ? 'Tramo «' : 'Cota «') + shown + '»'),
+      h('p',{}, (best.run ? 'Tramo encontrado' : 'Línea de cota encontrada') + ' (resaltado en morado): ' + nf(m.L * PT_MM, 1) + ' mm en el papel. ' + (best.run ? 'Si el morado no cubre todo el tramo (por ejemplo, tiene codos), cancela y usa «Calibrar a mano» marcando sus extremos.' : '¿En qué unidad está la cota?')));
     const list = h('div',{class:'menu'});
     const all = [['m',1000],['cm',10],['mm',1]].filter(([u]) => !forced || u === forced).map(([u,f]) => { const n = best.d.v * f / (m.L * PT_MM); return {u, n, s:snapStd(n)}; }).filter(o => o.n >= 5 && o.n <= 10000);
     all.sort((a,b) => (opts[0] && b.u === opts[0].u) - (opts[0] && a.u === opts[0].u));
@@ -1192,7 +1289,9 @@ async function pickDim(pi, L){
         close(); toast('Escala ' + label + ' aplicada');
       }}, h('b',{style:'min-width:44px'}, o.u), 'Cota en ' + ({m:'metros', cm:'centímetros', mm:'milímetros'}[o.u]) + ' → escala ' + label + (o.s ? '' : ' (no estándar)')));
     });
-    sh.append(list, acts(h('button',{class:'btn', onclick:() => close()}, 'Cancelar')));
+    sh.append(list, acts(
+      best.run ? h('button',{class:'btn', onclick:() => { close(); E.calValue = nf(best.d.v, 2); setTool('cal'); toast('Marca los dos extremos del tramo', 3500); }}, 'Calibrar a mano') : null,
+      h('button',{class:'btn', onclick:() => close()}, 'Cancelar')));
   });
   E.hl = null; requestDraw();
 }
