@@ -298,12 +298,12 @@ const savePrefs = () => { try { localStorage.setItem('notasObra.prefs', JSON.str
 
 /* ---------- Almacenamiento: IndexedDB con respaldo en memoria ---------- */
 const DB = {
-  db:null, mem:{notes:new Map(), pdfs:new Map(), ann:new Map(), photos:new Map()},
+  db:null, mem:{notes:new Map(), pdfs:new Map(), ann:new Map(), photos:new Map(), handles:new Map()},
   async open(){
     try {
       this.db = await new Promise((res, rej) => {
-        const r = indexedDB.open('notasObra', 2);
-        r.onupgradeneeded = () => { const d = r.result; ['notes','pdfs','ann','photos'].forEach(s => { if(!d.objectStoreNames.contains(s)) d.createObjectStore(s); }); };
+        const r = indexedDB.open('notasObra', 3);
+        r.onupgradeneeded = () => { const d = r.result; ['notes','pdfs','ann','photos','handles'].forEach(s => { if(!d.objectStoreNames.contains(s)) d.createObjectStore(s); }); };
         r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
         setTimeout(() => rej(new Error('IndexedDB no responde')), 4000);
       });
@@ -433,7 +433,9 @@ function updSelBar(){
   const allOn = visibleIds.length && visibleIds.every(id => sel.has(id));
   $('#sAll').textContent = allOn ? 'Quitar todos' : 'Seleccionar todos';
   ['#sMove','#sArch','#sDel'].forEach(b => $(b).disabled = !k);
-  $('#sArch').disabled = ![...sel].some(id => { const n = notes.find(x => x.id === id); return n && n.kind === 'pdf' && !n.archived; });
+  const ss = selNotes(), allArch = ss.length && ss.every(n => n.archived);
+  $('#sArch').lastChild.textContent = allArch ? 'Recuperar' : 'Archivar';
+  $('#sArch').disabled = !allArch && !ss.some(n => n.kind === 'pdf' && !n.archived);
 }
 $('#bSel').onclick = () => selMode ? exitSel() : enterSel();
 $('#sCancel').onclick = exitSel;
@@ -442,7 +444,7 @@ const selNotes = () => notes.filter(n => sel.has(n.id));
 async function deleteNote(n){
   const an = await DB.get('ann', n.id);
   if(an) for(const pg of an.pages) for(const ph of (pg.photos||[])) await DB.del('photos', ph.photoId);
-  await DB.del('notes', n.id); await DB.del('pdfs', n.id); await DB.del('ann', n.id);
+  await DB.del('notes', n.id); await DB.del('pdfs', n.id); await DB.del('ann', n.id); try { await DB.del('handles', n.id); } catch(e){}
 }
 $('#sDel').onclick = async () => {
   const list = selNotes(); if(!list.length) return;
@@ -454,7 +456,20 @@ $('#sDel').onclick = async () => {
   selMode = false; sel.clear(); document.body.classList.remove('selmode');
   await refreshLib(); toast(k + (k === 1 ? ' plano eliminado' : ' planos eliminados'));
 };
+async function recoverMany(list){
+  let ok = 0, miss = 0; const b = busy('Recuperando…');
+  for(let i = 0; i < list.length; i++){
+    b(); const done = busy('Recuperando ' + (i+1) + ' de ' + list.length + '…');
+    const fh = await getHandle(list[i].id);
+    try { if(!fh) throw 0; const f = await fileFromHandle(fh); f.__fh = fh; await restoreFrom(list[i], f); ok++; } catch(e){ miss++; }
+    done();
+  }
+  selMode = false; sel.clear(); document.body.classList.remove('selmode');
+  await refreshLib();
+  toast(ok + (ok === 1 ? ' plano recuperado' : ' planos recuperados') + (miss ? ' · ' + miss + ' hay que elegirlos a mano (tócalos)' : ''), 5000);
+}
 $('#sArch').onclick = async () => {
+  if(selNotes().length && selNotes().every(n => n.archived)) return recoverMany(selNotes());
   const list = selNotes().filter(n => n.kind === 'pdf' && !n.archived); if(!list.length) return;
   const plain = [], withN = []; for(const n of list) (await hasNotes(n.id) ? withN : plain).push(n);
   let todo = plain;
@@ -670,6 +685,7 @@ async function importOne(f, obra, relPath){
   await DB.put('pdfs', id, bytes);
   await DB.put('ann', id, {id, pages: pages.map(() => ({strokes:[], texts:[], measures:[], photos:[], scale:null}))});
   await DB.put('notes', id, meta);
+  await saveHandle(id, f);
   notes.push(meta);
   return meta;
 }
@@ -720,27 +736,59 @@ async function archiveNote(n){
   if(n.archived || n.kind !== 'pdf') return 0;
   await DB.del('pdfs', n.id); n.archived = true; await DB.put('notes', n.id, n); return n.size || 0;
 }
+/* Recordar dónde estaba el PDF (OneDrive o el móvil) para recuperarlo rápido */
+// Salvaguarda: si leer una ubicación guardada llegara a cerrar la app, la próxima vez se desactiva esta función
+const FH_FLAG = 'notasObra.fhTry';
+let fhOff = false; try { if(localStorage.getItem(FH_FLAG)){ fhOff = true; localStorage.removeItem(FH_FLAG); prefs.noHandles = true; savePrefs(); } } catch(e){}
+if(prefs.noHandles) fhOff = true;
+async function getHandle(id){
+  if(fhOff) return null;
+  try { localStorage.setItem(FH_FLAG, '1'); } catch(e){}
+  try { return await DB.get('handles', id) || null; } catch(e){ return null; } finally { try { localStorage.removeItem(FH_FLAG); } catch(e){} }
+}
+async function saveHandle(id, f){ if(!fhOff && f && f.__fh) try { await DB.put('handles', id, f.__fh); } catch(e){ console.warn('handle', e); } }
+async function fileFromHandle(fh){
+  if(fh.queryPermission && (await fh.queryPermission({mode:'read'})) !== 'granted'){
+    if(!fh.requestPermission || (await fh.requestPermission({mode:'read'})) !== 'granted') throw new Error('sin permiso');
+  }
+  return await fh.getFile();
+}
 async function restoreFrom(n, file){
   const bytes = await file.arrayBuffer();
   const doc = await loadPdf(bytes); const np = doc.numPages; doc.destroy();
   await DB.put('pdfs', n.id, bytes);
   n.archived = false; n.size = bytes.byteLength; n.updated = Date.now();
-  await DB.put('notes', n.id, n);
+  await DB.put('notes', n.id, n); await saveHandle(n.id, file);
   return np === n.pages.length;
 }
-function restoreSheet(n){
+async function pickOnePdf(){
+  if(window.showOpenFilePicker && !prefs.legacyPicker){
+    try { const [fh] = await window.showOpenFilePicker({multiple:false, types:[{description:'Plano PDF', accept:{'application/pdf':['.pdf']}}]}); const f = await fh.getFile(); f.__fh = fh; return f; }
+    catch(err){ if(err && err.name === 'AbortError') return null; console.warn(err); }
+  }
+  return await new Promise(res => { const inp = $('#reIn'); inp.value = ''; inp.onchange = () => res(inp.files[0] || null); inp.click(); });
+}
+async function restoreWith(n, f, quiet){
+  const name = f.name.replace(/\.pdf$/i,'');
+  if(!quiet && name !== n.title && !(await confirmSheet('¿Es el mismo plano?', 'El archivo se llama «' + name + '» y el plano archivado «' + n.title + '». Si no es el mismo, las notas pueden quedar descolocadas.', 'Usarlo igualmente'))) return false;
+  const done = busy('Recuperando plano…');
+  try { const okPages = await restoreFrom(n, f); done(); if(!okPages) toast('Ojo: el PDF tiene distinto número de páginas que el archivado', 4500); return true; }
+  catch(e){ done(); toast('No se pudo abrir ese PDF'); return false; }
+}
+async function restoreSheet(n){
+  // Si se sabe dónde estaba el PDF, se recupera directamente sin preguntar
+  const fh = await getHandle(n.id);
+  let why = '';
+  if(fh){
+    const done = busy('Recuperando de ' + (fh.name || 'su ubicación') + '…');
+    try { const f = await fileFromHandle(fh); f.__fh = fh; done(); if(await restoreWith(n, f, true)){ await refreshLib(); openNote(n.id); return; } }
+    catch(e){ done(); console.warn(e); why = /permiso/.test(e.message) ? 'No se dio permiso para leer el archivo.' : 'No se encontró el PDF donde estaba (puede que lo hayan movido, renombrado o que no haya conexión).'; }
+  }
   sheet((sh, close) => {
     sh.append(h('h2',{}, 'Plano archivado'),
-      h('p',{}, '«' + n.title + '» está archivado para ahorrar espacio. Tus notas, medidas y fotos siguen guardadas. Elige otra vez el PDF (de la nube o del móvil) y se recupera todo.'),
+      h('p',{}, (why ? why + ' ' : '') + '«' + n.title + '» está archivado para ahorrar espacio. Tus notas, medidas y fotos siguen guardadas. Elige otra vez el PDF (de la nube o del móvil) y se recupera todo; la app recordará dónde está para la próxima vez.'),
       acts(h('button',{class:'btn', onclick:() => close()}, 'Cancelar'),
-        h('button',{class:'btn pri', onclick:() => { close(); const inp = $('#reIn'); inp.value = ''; inp.onchange = async () => {
-          const f = inp.files[0]; if(!f) return;
-          const name = f.name.replace(/\.pdf$/i,'');
-          if(name !== n.title && !(await confirmSheet('¿Es el mismo plano?', 'El archivo se llama «' + name + '» y el plano archivado «' + n.title + '». Si no es el mismo, las notas pueden quedar descolocadas.', 'Usarlo igualmente'))) return;
-          const done = busy('Recuperando plano…');
-          try { const okPages = await restoreFrom(n, f); done(); if(!okPages) toast('Ojo: el PDF tiene distinto número de páginas que el archivado', 4500); await refreshLib(); openNote(n.id); }
-          catch(e){ done(); toast('No se pudo abrir ese PDF'); }
-        }; inp.click(); }}, 'Elegir el PDF')));
+        h('button',{class:'btn pri', onclick:async () => { close(); const f = await pickOnePdf(); if(!f) return; if(await restoreWith(n, f, false)){ await refreshLib(); openNote(n.id); } }}, 'Elegir el PDF')));
   });
 }
 async function spaceSheet(){
@@ -786,7 +834,7 @@ async function pickFiles(){
   if(window.showOpenFilePicker && !prefs.legacyPicker){
     try {
       const hs = await window.showOpenFilePicker({multiple:true, types:[{description:'Planos PDF o ZIP', accept:{'application/pdf':['.pdf'], 'application/zip':['.zip']}}]});
-      const l = []; for(const h of hs) l.push(await h.getFile());
+      const l = []; for(const h of hs){ const f = await h.getFile(); f.__fh = h; l.push(f); }
       handleFiles(l); return;
     } catch(err){ if(err && err.name === 'AbortError') return; console.warn(err); }
   }
