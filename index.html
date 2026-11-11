@@ -158,6 +158,18 @@ textarea.field{height:110px;padding:10px 12px;resize:vertical}
 .card{position:relative}
 .spacebar{height:10px;border-radius:5px;background:var(--surface2);overflow:hidden;margin:6px 0 4px}
 .spacebar i{display:block;height:100%;background:var(--accent)}
+.selrow{display:flex;justify-content:flex-end;margin:4px 0 -2px}
+.selrow .linkbtn{font-size:14px;font-weight:600;color:var(--accent);padding:6px 2px}
+.card .ck{position:absolute;right:8px;top:8px;width:26px;height:26px;border-radius:50%;border:2px solid #fff;background:rgba(0,0,0,.28);box-shadow:0 1px 4px rgba(0,0,0,.3);display:grid;place-items:center;color:#fff;font-size:15px;font-weight:800;z-index:2}
+.card.sel{outline:3px solid var(--accent);outline-offset:-3px}
+.card.sel .ck{background:var(--accent);border-color:var(--accent)}
+body.selmode #lib{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
+#selBar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--surface);box-shadow:0 -4px 18px rgba(0,0,0,.15);padding:10px 12px calc(10px + env(safe-area-inset-bottom));display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+#selBar .cnt{flex:1 1 100%;display:flex;align-items:center;gap:10px;font-weight:700}
+#selBar .cnt .linkbtn{margin-left:auto;font-weight:600;color:var(--accent);font-size:14px}
+#selBar .btn{flex:1;justify-content:center;box-shadow:none;background:var(--surface2);padding:0 8px}
+#selBar .btn.danger{background:#c92a2a;color:#fff}
+#selBar .btn:disabled{opacity:.4}
 #toast{position:fixed;left:50%;bottom:calc(80px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#1c1f26;color:#fff;padding:10px 14px;border-radius:12px;font-size:14px;z-index:40;max-width:calc(100% - 32px);box-shadow:0 6px 20px rgba(0,0,0,.3)}
 .busy{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:rgba(0,0,0,.25);color:#fff;font-weight:600}
 .busy div{background:#1c1f26;padding:14px 18px;border-radius:14px}
@@ -203,11 +215,18 @@ textarea.field{height:110px;padding:10px 12px;resize:vertical}
     <input class="search" id="q" placeholder="Buscar plano o código" type="search">
   </div>
   <div id="filters"></div>
+  <div class="selrow" id="selRow"><button class="linkbtn" id="bSel">Seleccionar</button></div>
   <div id="recent"></div>
   <div class="grid" id="grid"></div>
   <div class="empty" id="empty" hidden><b>Aún no hay planos</b>Crea una obra con «+ Obra» e importa sus planos en PDF (puedes seleccionar muchos a la vez). Se clasifican solos por zona e instalación según el nombre del archivo.</div>
   <div class="foot">Las notas se guardan en este dispositivo.<br><button class="linkbtn" id="bSpace">Espacio ocupado…</button></div>
   <input type="file" id="reIn" accept="application/pdf,.pdf" hidden>
+  <div id="selBar" hidden>
+    <div class="cnt"><button class="linkbtn" id="sCancel" style="margin-left:0;color:var(--ink)">✕</button><span id="sCount">0 seleccionados</span><button class="linkbtn" id="sAll">Seleccionar todos</button></div>
+    <button class="btn" id="sMove"><svg class="i"><use href="#i-share"/></svg>Mover</button>
+    <button class="btn" id="sArch"><svg class="i"><use href="#i-pdf"/></svg>Archivar</button>
+    <button class="btn danger" id="sDel"><svg class="i"><use href="#i-trash"/></svg>Eliminar</button>
+  </div>
 </main>
 
 <!-- Editor -->
@@ -385,9 +404,79 @@ function noteCard(n, small){
   const more = h('button',{class:'more', title:'Opciones', onclick:e => { e.stopPropagation(); noteMenu(n); }}, svgIcon('i-more'));
   const tags = [n.zona, n.inst].filter(Boolean).join(' · ');
   const sub = (n.superseded ? 'REV. ANTERIOR · ' : '') + (tags ? tags + ' · ' : '') + n.pages.length + (n.pages.length === 1 ? ' pág.' : ' págs.');
-  return h('div',{class:'card' + (small ? ' sm' : '') + (n.archived ? ' arch' : ''), role:'button', tabindex:'0', onclick:() => openNote(n.id)},
-    n.archived ? h('span',{class:'badge'}, 'Archivado') : null, th, h('div',{class:'meta'}, h('div',{class:'t'}, h('b',{}, n.title), h('span',{}, sub)), small ? null : more));
+  const on = selMode && sel.has(n.id);
+  const card = h('div',{class:'card' + (small ? ' sm' : '') + (n.archived ? ' arch' : '') + (on ? ' sel' : ''), role:'button', tabindex:'0', onclick:() => { if(lpFired){ lpFired = false; return; } if(selMode) toggleSel(n.id); else openNote(n.id); }},
+    n.archived ? h('span',{class:'badge'}, 'Archivado') : null, selMode && !small ? h('span',{class:'ck'}, on ? '✓' : '') : null, th, h('div',{class:'meta'}, h('div',{class:'t'}, h('b',{}, n.title), h('span',{}, sub)), small || selMode ? null : more));
+  if(!small) longPress(card, () => { if(!selMode) enterSel(); toggleSel(n.id); });
+  return card;
 }
+/* Selección múltiple */
+let selMode = false, sel = new Set(), lpFired = false, visibleIds = [];
+function longPress(el, fn){
+  let t = null, x0 = 0, y0 = 0;
+  const clear = () => { clearTimeout(t); t = null; };
+  el.addEventListener('pointerdown', e => { if(e.pointerType === 'mouse' && e.button !== 0) return; x0 = e.clientX; y0 = e.clientY; lpFired = false; clear(); t = setTimeout(() => { t = null; lpFired = true; if(navigator.vibrate) navigator.vibrate(15); fn(); }, 480); });
+  el.addEventListener('pointermove', e => { if(t && Math.hypot(e.clientX - x0, e.clientY - y0) > 10) clear(); });
+  ['pointerup','pointercancel','pointerleave'].forEach(ev => el.addEventListener(ev, clear));
+  el.addEventListener('contextmenu', e => e.preventDefault());
+}
+function enterSel(){ selMode = true; sel.clear(); document.body.classList.add('selmode'); renderLib(); }
+function exitSel(){ selMode = false; sel.clear(); document.body.classList.remove('selmode'); renderLib(); }
+function toggleSel(id){ sel.has(id) ? sel.delete(id) : sel.add(id); renderLib(); }
+function updSelBar(){
+  $('#selBar').hidden = !selMode;
+  $('#bSel').textContent = selMode ? 'Cancelar' : 'Seleccionar';
+  if(!selMode) return;
+  for(const id of [...sel]) if(!notes.find(n => n.id === id)) sel.delete(id);
+  const k = sel.size;
+  $('#sCount').textContent = k + (k === 1 ? ' seleccionado' : ' seleccionados');
+  const allOn = visibleIds.length && visibleIds.every(id => sel.has(id));
+  $('#sAll').textContent = allOn ? 'Quitar todos' : 'Seleccionar todos';
+  ['#sMove','#sArch','#sDel'].forEach(b => $(b).disabled = !k);
+  $('#sArch').disabled = ![...sel].some(id => { const n = notes.find(x => x.id === id); return n && n.kind === 'pdf' && !n.archived; });
+}
+$('#bSel').onclick = () => selMode ? exitSel() : enterSel();
+$('#sCancel').onclick = exitSel;
+$('#sAll').onclick = () => { const allOn = visibleIds.every(id => sel.has(id)); visibleIds.forEach(id => allOn ? sel.delete(id) : sel.add(id)); renderLib(); };
+const selNotes = () => notes.filter(n => sel.has(n.id));
+async function deleteNote(n){
+  const an = await DB.get('ann', n.id);
+  if(an) for(const pg of an.pages) for(const ph of (pg.photos||[])) await DB.del('photos', ph.photoId);
+  await DB.del('notes', n.id); await DB.del('pdfs', n.id); await DB.del('ann', n.id);
+}
+$('#sDel').onclick = async () => {
+  const list = selNotes(); if(!list.length) return;
+  const withN = []; for(const n of list) if(await hasNotes(n.id)) withN.push(n);
+  const k = list.length;
+  if(!(await confirmSheet('Eliminar ' + k + (k === 1 ? ' plano' : ' planos'), 'Se borrarán de este dispositivo junto con sus anotaciones y fotos. No se puede deshacer.', 'Eliminar'))) return;
+  if(withN.length && !(await confirmSheet('¿Seguro?', withN.length + (withN.length === 1 ? ' de ellos tiene' : ' de ellos tienen') + ' anotaciones (dibujos, textos, medidas o fotos) que se perderán: ' + withN.slice(0, 4).map(n => '«' + n.title + '»').join(', ') + (withN.length > 4 ? '…' : '') + '.', 'Eliminar igualmente'))) return;
+  for(const n of list) await deleteNote(n);
+  selMode = false; sel.clear(); document.body.classList.remove('selmode');
+  await refreshLib(); toast(k + (k === 1 ? ' plano eliminado' : ' planos eliminados'));
+};
+$('#sArch').onclick = async () => {
+  const list = selNotes().filter(n => n.kind === 'pdf' && !n.archived); if(!list.length) return;
+  const plain = [], withN = []; for(const n of list) (await hasNotes(n.id) ? withN : plain).push(n);
+  let todo = plain;
+  if(withN.length){
+    const m = withN.length + (withN.length === 1 ? ' plano tiene' : ' planos tienen') + ' anotaciones. Al archivarlos se borra el PDF del móvil; las anotaciones se guardan, pero para verlas tendrás que volver a elegir el mismo PDF.';
+    const inc = await sheet((sh, close) => sh.append(h('h2',{}, 'Hay planos con anotaciones'), h('p',{}, m),
+      h('div',{class:'acts'}, h('button',{class:'btn', onclick:() => close(null)}, 'Cancelar'), plain.length ? h('button',{class:'btn', onclick:() => close(false)}, 'Solo los ' + plain.length + ' sin notas') : null, h('button',{class:'btn danger', onclick:() => close(true)}, 'Incluirlos'))));
+    if(inc == null) return;
+    if(inc){ if(!(await confirmSheet('¿Seguro que quieres archivarlos?', 'Segunda confirmación: se archivarán también ' + withN.length + (withN.length === 1 ? ' plano' : ' planos') + ' con anotaciones.', 'Archivar igualmente'))) return; todo = list; }
+  } else if(!(await confirmSheet('Archivar ' + plain.length + (plain.length === 1 ? ' plano' : ' planos'), 'Se borra el PDF del móvil para liberar espacio. Siguen en la lista y puedes recuperarlos eligiendo el PDF otra vez.', 'Archivar'))) return;
+  let fr = 0; for(const n of todo) fr += await archiveNote(n);
+  selMode = false; sel.clear(); document.body.classList.remove('selmode');
+  await refreshLib(); toast(todo.length + (todo.length === 1 ? ' plano archivado' : ' planos archivados') + (fr ? ' · ' + fmtMB(fr) + ' liberados' : ''));
+};
+$('#sMove').onclick = () => {
+  const list = selNotes(); if(!list.length) return;
+  sheet((sh, close) => {
+    const m = h('div',{class:'menu'});
+    [{id:'', name:'Sin obra'}, ...obras].forEach(o => m.append(h('button',{onclick:async () => { for(const n of list){ n.obra = o.id; await DB.put('notes', n.id, n); } close(); selMode = false; sel.clear(); document.body.classList.remove('selmode'); await refreshLib(); toast(list.length + ' movidos a ' + o.name); }}, o.name)));
+    sh.append(h('h2',{}, 'Mover ' + list.length + ' a obra'), m);
+  });
+};
 function renderLib(){
   updSpaceBtn();
   // obras
@@ -423,12 +512,13 @@ function renderLib(){
   if(curObra) list.sort((a,b) => natural(a.title, b.title));
   // recientes
   const rc = $('#recent'); rc.innerHTML = '';
-  if(!q && fZona == null && fInst == null){
+  if(!q && fZona == null && fInst == null && !selMode){
     const rec = inObra.filter(n => n.opened).sort((a,b) => b.opened - a.opened).slice(0, 6);
     if(rec.length && inObra.length > 4){ rc.append(h('div',{class:'sect'}, 'Recientes')); const strip = h('div',{class:'strip'}); rec.forEach(n => strip.append(noteCard(n, true))); rc.append(strip); rc.append(h('div',{class:'sect'}, 'Todos los planos (' + inObra.length + ')')); }
   }
   const g = $('#grid'); g.innerHTML = '';
   list.forEach(n => g.appendChild(noteCard(n)));
+  visibleIds = list.map(n => n.id); $('#selRow').hidden = !list.length && !selMode; updSelBar();
   const em = $('#empty'); em.hidden = list.length > 0;
   if(!list.length && inObra.length) { em.innerHTML = '<b>Nada con ese filtro</b>Prueba con otra zona o instalación.'; }
   else if(!list.length) em.innerHTML = curObra ? '<b>Esta obra aún no tiene planos</b>Pulsa «Importar planos» y selecciona todos los PDF a la vez. Se clasifican solos por zona e instalación según el nombre del archivo.' : '<b>Aún no hay planos</b>Crea una obra con «+ Obra» e importa sus planos en PDF (puedes seleccionar muchos a la vez).';
@@ -470,7 +560,7 @@ function noteMenu(n){
         const fr = await archiveNote(n); await refreshLib(); toast('Plano archivado' + (fr ? ' · ' + fmtMB(fr) + ' liberados' : '')); }}, svgIcon('i-pdf'), n.archived ? 'Recuperar PDF' : 'Archivar (liberar espacio' + (n.size ? ', ' + fmtMB(n.size) : '') + ')') : null,
       h('button',{onclick:() => { close(); moveSheet(n); }}, svgIcon('i-share'), 'Mover a otra obra'),
       h('button',{onclick:async () => { close(); const t = await askText('Renombrar', n.title); if(t && t.trim()){ n.title=t.trim(); await DB.put('notes', n.id, n); refreshLib(); } }}, svgIcon('i-text'), 'Renombrar'),
-      h('button',{onclick:async () => { close(); if(await confirmSheet('Eliminar nota', `Se borrará «${n.title}» y todas sus anotaciones de este dispositivo.`)){ const an = await DB.get('ann', n.id); if(an) for(const pg of an.pages) for(const ph of (pg.photos||[])) await DB.del('photos', ph.photoId); await DB.del('notes',n.id); await DB.del('pdfs',n.id); await DB.del('ann',n.id); refreshLib(); } }}, svgIcon('i-trash'), 'Eliminar')));
+      h('button',{onclick:async () => { close(); if(await confirmSheet('Eliminar nota', `Se borrará «${n.title}» y todas sus anotaciones de este dispositivo.`)){ await deleteNote(n); refreshLib(); } }}, svgIcon('i-trash'), 'Eliminar')));
   });
 }
 function tagsSheet(n){
