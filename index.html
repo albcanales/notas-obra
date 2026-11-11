@@ -172,6 +172,8 @@ body.selmode #lib{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
 #selBar .btn:disabled{opacity:.4}
 #updBar{position:fixed;left:12px;right:12px;top:calc(10px + env(safe-area-inset-top));z-index:50;background:#1c1f26;color:#fff;border-radius:14px;padding:10px 10px 10px 16px;display:flex;align-items:center;gap:10px;box-shadow:0 6px 20px rgba(0,0,0,.35);font-weight:600;font-size:14px}
 #updBar span{flex:1}
+#revBar{position:fixed;left:12px;right:12px;bottom:calc(14px + env(safe-area-inset-bottom));z-index:25;background:#1c1f26;color:#fff;border-radius:14px;padding:10px 10px 10px 16px;display:flex;align-items:center;gap:8px;box-shadow:0 6px 20px rgba(0,0,0,.35);font-weight:600;font-size:14px}
+#revBar span{flex:1}
 #odb{position:fixed;inset:0;z-index:28;background:var(--bg);display:flex;flex-direction:column;padding:calc(8px + env(safe-area-inset-top)) 12px calc(10px + env(safe-area-inset-bottom))}
 #odb .odh{display:flex;align-items:center;gap:8px}
 #odb .odh b{flex:1;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -239,7 +241,7 @@ body.selmode #lib{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
   <div id="recent"></div>
   <div class="grid" id="grid"></div>
   <div class="empty" id="empty" hidden><b>Aún no hay planos</b>Crea una obra con «+ Obra» e importa sus planos en PDF (puedes seleccionar muchos a la vez). Se clasifican solos por zona e instalación según el nombre del archivo.</div>
-  <div class="foot">Las notas se guardan en este dispositivo.<br><button class="linkbtn" id="bSpace">Espacio ocupado…</button><br><button class="linkbtn" id="bVer" style="margin-top:6px">Buscar actualización</button></div>
+  <div class="foot">Las notas se guardan en este dispositivo.<br><button class="linkbtn" id="bSpace">Espacio ocupado…</button><br><button class="linkbtn" id="bRevs" style="margin-top:6px" hidden>Buscar revisiones nuevas de planos</button><br><button class="linkbtn" id="bVer" style="margin-top:6px">Buscar actualización</button></div>
   <input type="file" id="reIn" accept="application/pdf,.pdf" hidden>
   <input type="file" id="cadIn" hidden>
   <div id="selBar" hidden>
@@ -943,6 +945,88 @@ async function odDownload(od, name){
   const blob = await r.blob(); const f = new File([blob], name || it.name, {type: /\.pdf$/i.test(name || it.name) ? 'application/pdf' : 'application/octet-stream'});
   f.__od = {d: od.d, i: od.i}; return f;
 }
+/* ---------- Revisiones nuevas de los planos en OneDrive/SharePoint ----------
+   Para cada plano importado desde OneDrive se mira su carpeta: si aparece el mismo código
+   con una revisión mayor (R1 → R2), se avisa y se puede actualizar con un toque. */
+let revFound = [], revBusy = false;
+async function odChildren(d, p){
+  const out = []; let url = '/drives/' + d + '/items/' + p + '/children?$select=id,name,file&$top=999';
+  while(url){ const j = await graph(url); out.push(...(j.value || [])); url = j['@odata.nextLink'] || null; }
+  return out;
+}
+async function findNewRevs(){
+  const live = notes.filter(n => n.kind === 'pdf' && n.od && n.code && !n.superseded);
+  const folders = new Map(), found = new Map();
+  const consider = (n, it, d) => {
+    if(!it || !it.name || !/\.pdf$/i.test(it.name) || codeOf(it.name) !== n.code) return;
+    const rv = revOf(it.name); if((rv ?? -1) <= (n.rev ?? -1)) return;
+    const title = it.name.replace(/\.pdf$/i, '');
+    if(notes.some(x => (x.obra || '') === (n.obra || '') && x.title === title)) return;
+    const k = (n.obra || '') + '|' + n.code, prev = found.get(k);
+    if(!prev || (rv ?? -1) > (prev.rev ?? -1)) found.set(k, {n, rev: rv, name: it.name, od: {d, i: it.id}});
+  };
+  for(const n of live){
+    if(!n.od.p){ // carpeta del plano (se averigua una vez y se guarda)
+      try { const it = await graph('/drives/' + n.od.d + '/items/' + n.od.i + '?$select=id,name,parentReference');
+        n.od.p = it.parentReference && it.parentReference.id; if(n.od.p) await DB.put('notes', n.id, n); consider(n, it, n.od.d);
+      } catch(e){ if(e.message === 'login') throw e; continue; } // borrado o movido: se ignora
+    }
+    if(!n.od.p) continue;
+    const k = n.od.d + '|' + n.od.p; if(!folders.has(k)) folders.set(k, {d: n.od.d, p: n.od.p, ns: []}); folders.get(k).ns.push(n);
+  }
+  for(const f of folders.values()){
+    let kids; try { kids = await odChildren(f.d, f.p); } catch(e){ if(e.message === 'login') throw e; continue; }
+    for(const n of f.ns) for(const it of kids) consider(n, it, f.d);
+  }
+  return [...found.values()];
+}
+async function checkRevs(manual){
+  if(!MS_ON || revBusy) return;
+  if(!notes.some(n => n.kind === 'pdf' && n.od && n.code && !n.superseded)){ if(manual) toast('No hay planos importados desde OneDrive', 3500); return; }
+  if(!msUser()){ if(manual) msEnsure(); return; }
+  if(!manual && Date.now() - (prefs.revChk || 0) < 20 * 60e3){ showRevBar(); return; }
+  revBusy = true; const done = manual ? busy('Buscando revisiones nuevas en OneDrive…') : null; let err = null;
+  try { revFound = await findNewRevs(); prefs.revChk = Date.now(); savePrefs(); } catch(e){ err = e; }
+  revBusy = false; if(done) done();
+  if(err){ if(manual){ if(err.message === 'login') msEnsure(); else toast('No se pudo comprobar: ' + err.message, 5000); } return; }
+  showRevBar();
+  if(manual && !revFound.length) toast('Todos los planos están en su última revisión', 3500);
+}
+function showRevBar(){
+  const old = $('#revBar'); if(old) old.remove();
+  if(E) return; // solo en la lista, no dentro de un plano
+  revFound = revFound.filter(r => notes.includes(r.n) && !r.n.superseded);
+  if(!revFound.length) return;
+  const nr = revFound.length;
+  document.body.appendChild(h('div',{id:'revBar'},
+    h('span',{}, nr === 1 ? 'Hay 1 revisión nueva de un plano' : 'Hay ' + nr + ' revisiones nuevas de planos'),
+    h('button',{class:'btn', 'aria-label':'Cerrar', style:'background:transparent;color:#fff;font-size:20px;padding:4px 10px;box-shadow:none', onclick:() => $('#revBar').remove()}, '×'),
+    h('button',{class:'btn pri', onclick:() => { $('#revBar').remove(); revSheet(); }}, 'Ver')));
+}
+function revSheet(){
+  const obraName = id => { const o = obras.find(x => x.id === id); return o ? o.name : 'Sin obra'; };
+  const sel = new Set(revFound);
+  sheet((sh, close) => {
+    const list = h('div',{class:'menu'});
+    for(const r of revFound){
+      const cb = h('input',{type:'checkbox', checked:true, style:'width:20px;height:20px;flex:none', onchange:() => cb.checked ? sel.add(r) : sel.delete(r)});
+      list.append(h('label',{style:'display:flex;gap:10px;align-items:flex-start;padding:10px 4px'}, cb,
+        h('div',{style:'min-width:0;overflow-wrap:anywhere'}, h('b',{}, r.name.replace(/\.pdf$/i, '')), h('div',{style:'color:var(--muted);font-size:13px'}, obraName(r.n.obra) + ' · tienes ' + (r.n.rev != null ? 'R' + r.n.rev : 'la versión sin revisión')))));
+    }
+    sh.append(h('h2',{}, 'Revisiones nuevas en OneDrive'), list,
+      h('p',{style:'color:var(--muted)'}, 'La revisión anterior se queda como «REV. ANTERIOR» con tus notas; si no tiene notas, se archiva para ahorrar espacio.'),
+      acts(h('button',{class:'btn', onclick:() => { close(); showRevBar(); }}, 'Ahora no'),
+        h('button',{class:'btn pri', onclick:async () => { close(); await updateRevs([...sel]); }}, 'Actualizar')));
+  });
+}
+async function updateRevs(list){
+  if(!list.length) return;
+  if(!msUser() && !(await msEnsure())) return;
+  const byObra = new Map();
+  for(const r of list){ const k = r.n.obra || ''; if(!byObra.has(k)) byObra.set(k, []); byObra.get(k).push({lazy:true, od:r.od, name:r.name, relPath:r.name}); }
+  for(const [obra, files] of byObra) await startImport(files, obra);
+  revFound = revFound.filter(r => !list.includes(r)); showRevBar();
+}
 /* Explorador de OneDrive/SharePoint dentro de la app */
 const odMap = it => { const r = it.remoteItem; const d = r ? r.parentReference && r.parentReference.driveId : it.parentReference && it.parentReference.driveId;
   return {name: it.name || (r && r.name), d, i: r ? r.id : it.id, folder: !!(it.folder || (r && r.folder)), size: it.size || (r && r.size) || 0, path: it.parentReference && it.parentReference.path ? decodeURIComponent(it.parentReference.path.replace(/^.*?root:/, '')) : ''}; };
@@ -1169,7 +1253,7 @@ async function closeEditor(){
   cancelDraft();
   await flushSave(true);
   if(E.pdf) E.pdf.destroy();
-  E = null; $('#ed').hidden = true; $('#lib').hidden = false; refreshLib();
+  E = null; $('#ed').hidden = true; $('#lib').hidden = false; refreshLib(); showRevBar();
 }
 
 /* ---------- Guardado ---------- */
@@ -2748,7 +2832,7 @@ setInterval(() => { if(E){ const p = currentPage(); if(p !== lastTagPage){ lastT
 (async () => { await DB.open(); if(MS_ON) await msHandleRedirect(); refreshLib(); initPdf().catch(()=>{}); })();
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 /* Actualizaciones sin tener que cerrar la app */
-const APP_V = '2026.11.11-20';
+const APP_V = '2026.11.11-21';
 async function checkUpdate(manual){
   try {
     const r = await fetch('index.html?v=' + Date.now(), {cache:'no-store'}); if(!r.ok) throw 0;
@@ -2764,7 +2848,8 @@ function showUpdate(){
   document.body.appendChild(bar);
 }
 window.addEventListener('load', () => { setTimeout(() => checkUpdate(false), 1500); const vb = $('#bVer'); if(vb){ vb.textContent = 'Versión ' + APP_V + ' · Buscar actualización'; vb.onclick = () => checkUpdate(true); } });
-document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible') checkUpdate(false); });
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible'){ checkUpdate(false); setTimeout(() => checkRevs(false), 2500); } });
+if(MS_ON){ const br = $('#bRevs'); if(br){ br.hidden = false; br.onclick = () => checkRevs(true); } setTimeout(() => checkRevs(false), 4000); }
 // Pedir almacenamiento persistente para que el sistema no borre las notas
 if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
 })();
