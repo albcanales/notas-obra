@@ -1643,6 +1643,72 @@ function cadMatchScale(cadSegs, pdfSegs, opt={}){
   return {r, rot, support: used.size, nPdf: P.length, nCad: C.length, peak: best.s, second: second ? second.s : 0};
 }
 
+/* Escala por alineación de líneas paralelas (ejes, caras de muros, pilares).
+   1) candidatos de escala por separaciones entre líneas; 2) cada candidato se verifica buscando el desplazamiento
+   que alinea más posiciones a la vez en X y en Y (con giro 0/90/180/270). */
+function axisPositions(segs, minLen, K){
+  const acc = {h:new Map(), v:new Map()};
+  let ext = 0; for(let i=0;i<segs.length;i++){ const a = Math.abs(segs[i]); if(a > ext) ext = a; }
+  const q = Math.max(ext, 1e-9) * 2e-5;
+  for(let i=0; i+3<segs.length; i+=4){
+    const dx = segs[i+2]-segs[i], dy = segs[i+3]-segs[i+1], L = Math.hypot(dx, dy);
+    if(!(L >= minLen)) continue;
+    if(Math.abs(dy) <= L * 0.0087){ const k = Math.round((segs[i+1]+segs[i+3]) / 2 / q); acc.h.set(k, (acc.h.get(k) || 0) + L); }
+    else if(Math.abs(dx) <= L * 0.0087){ const k = Math.round((segs[i]+segs[i+2]) / 2 / q); acc.v.set(k, (acc.v.get(k) || 0) + L); }
+  }
+  const top = m => { const arr = [...m.entries()].sort((a,b) => b[1]-a[1]); const out = [];
+    for(const [k] of arr){ const p = k * q; if(out.every(o => Math.abs(o - p) > q * 3)) out.push(p); if(out.length >= K) break; } return out; };
+  return {h: top(acc.h), v: top(acc.v)};
+}
+function pairDists(pos){ const d = []; for(let i=0;i<pos.length;i++) for(let j=i+1;j<pos.length;j++){ const x = Math.abs(pos[i]-pos[j]); if(x > 0) d.push(x); } return d; }
+function alignCount(cp, pp, s, sg, tol){
+  // mejor desplazamiento t con pp ≈ sg·s·cp + t ; devuelve nº de posiciones alineadas
+  const hb = new Map();
+  for(const c of cp){ const x = sg * s * c; for(const p of pp){ const k = Math.round((p - x) / tol); hb.set(k, (hb.get(k) || 0) + 1); } }
+  let best = 0, bk = 0; for(const [k, v] of hb){ const t = v + (hb.get(k+1) || 0); if(t > best){ best = t; bk = k; } }
+  // contar alineadas (cada posición del PDF una sola vez)
+  const t0 = (bk + 0.5) * tol; let n = 0; const pairs = [];
+  for(const p of pp){ let m = null; for(const c of cp){ const e = Math.abs(p - sg*s*c - t0); if(e <= tol && (!m || e < m.e)) m = {e, c}; } if(m){ n++; pairs.push([m.c * sg, p]); } }
+  return {n, pairs};
+}
+function posMatchScale(cadSegs, pdfSegs, opt={}){
+  const K = opt.K || 120, Kd = opt.Kd || 45;
+  const P = axisPositions(pdfSegs, opt.minPdf || 12, K);
+  let ext = 0; for(let i=0;i<cadSegs.length;i++){ const a = Math.abs(cadSegs[i]); if(a > ext) ext = a; }
+  const C = axisPositions(cadSegs, ext * 0.002, K);
+  if(P.h.length + P.v.length < 6 || C.h.length + C.v.length < 6) return null;
+  const lrMin = Math.log(opt.rMin || 1e-4), lrMax = Math.log(opt.rMax || 1e4), BW = 0.004;
+  // 1) candidatos
+  const votes = new Map();
+  const dC = [pairDists(C.h.slice(0, Kd)), pairDists(C.v.slice(0, Kd))].map(a => a.map(Math.log));
+  const dP = [pairDists(P.h.slice(0, Kd)), pairDists(P.v.slice(0, Kd))].map(a => a.map(Math.log));
+  for(const a of [...dC[0], ...dC[1]]) for(const b of [...dP[0], ...dP[1]]){ const lr = a - b; if(lr < lrMin || lr > lrMax) continue; const k = Math.round(lr / BW); votes.set(k, (votes.get(k) || 0) + 1); }
+  const cands = [...votes.entries()].map(([k, v]) => ({k, s:(votes.get(k-1)||0) + v + (votes.get(k+1)||0)})).sort((a,b) => b.s - a.s);
+  const picked = []; for(const c of cands){ if(picked.every(p => Math.abs(p.k - c.k) > 2)) picked.push(c); if(picked.length >= (opt.nCand || 60)) break; }
+  // 2) verificación
+  const tol = opt.tol || 0.8; // pt
+  let best = null; const scores = [];
+  for(const c of picked){
+    for(const lrr of [c.k*BW - BW/2, c.k*BW, c.k*BW + BW/2]){
+      const s = Math.exp(-lrr); // pt por unidad CAD
+      for(const rot of [0, 90]) for(const sx of [1, -1]) for(const sy of [1, -1]){
+        const A1 = rot === 0 ? alignCount(C.v, P.v, s, sx, tol) : alignCount(C.h, P.v, s, sx, tol);
+        const A2 = rot === 0 ? alignCount(C.h, P.h, s, sy, tol) : alignCount(C.v, P.h, s, sy, tol);
+        const sc = Math.min(A1.n, A2.n) * 2 + Math.max(A1.n, A2.n) * 0.5;
+        scores.push({sc, lr: lrr});
+        if(!best || sc > best.sc) best = {sc, s, rot, A1, A2, n1:A1.n, n2:A2.n};
+      }
+    }
+  }
+  if(!best) return null;
+  // segundo mejor con escala distinta (>3 %)
+  const lrB = -Math.log(best.s); let second = 0; for(const x of scores) if(Math.abs(x.lr - lrB) > 0.03 && x.sc > second) second = x.sc;
+  // afinar escala con mínimos cuadrados sobre los pares alineados de cada eje
+  const fit = pairs => { if(pairs.length < 3) return null; const mx = pairs.reduce((a,p)=>a+p[0],0)/pairs.length, my = pairs.reduce((a,p)=>a+p[1],0)/pairs.length; let sxy = 0, sxx = 0; for(const [x,y] of pairs){ sxy += (x-mx)*(y-my); sxx += (x-mx)*(x-mx); } return sxx > 0 ? sxy / sxx : null; };
+  const f1 = fit(best.A1.pairs), f2 = fit(best.A2.pairs); const fs = [f1, f2].filter(v => v && v > 0);
+  const sFin = fs.length ? fs.reduce((a,b)=>a+b,0) / fs.length : best.s;
+  return {r: 1 / sFin, rot: best.rot, aligned: best.n1 + best.n2, n1: best.n1, n2: best.n2, peak: best.sc, second};
+}
 async function readCad(file){
   const name = file.name.toLowerCase();
   if(name.endsWith('.dxf')) return parseDxf(await file.text());
@@ -1668,6 +1734,7 @@ async function cadPick(){
 }
 async function cadScale(pi, all){
   const f = await cadPick(); if(!f) return;
+  await new Promise(r => setTimeout(r, 0));
   const done = busy(/\.dwg$/i.test(f.name) ? 'Leyendo el DWG… (la primera vez descarga el lector, unos 10 MB)' : 'Leyendo el DXF…');
   let cad, res;
   try {
@@ -1675,20 +1742,28 @@ async function cadScale(pi, all){
     const A = await analyzePage(pi);
     const ps = new Array(A.segs.length); for(let i = 0; i < A.segs.length; i += 2){ ps[i] = A.segs[i]; ps[i+1] = -A.segs[i+1]; }
     res = cad.segs.length >= 16 ? cadMatchScale(cad.segs, ps, {}) : null;
+    const okL = res && res.support >= 12 && res.peak >= 1.25 * Math.max(1, res.second);
+    if(!okL && cad.segs.length >= 16){
+      // Segundo método: alinear ejes y caras de muros (funciona aunque las líneas estén cortadas por conductos, textos…)
+      await new Promise(r => setTimeout(r, 30));
+      const pr = posMatchScale(cad.segs, ps, {K: 80});
+      res = pr && pr.aligned >= 16 && pr.peak >= 1.15 * Math.max(1, pr.second) ? {r: pr.r, rot: pr.rot, support: pr.aligned, peak: 2, second: 1, how: 'ejes'} : null;
+    }
   } catch(e){ done(); console.error(e); toast(e.message || 'No se pudo leer el CAD', 4500); return; }
   done();
-  const ok = res && res.support >= 12 && res.peak >= 1.25 * Math.max(1, res.second);
+  const ok = res && (res.how === 'ejes' || (res.support >= 12 && res.peak >= 1.25 * Math.max(1, res.second)));
   if(!ok){ await confirmSheet('No encaja', 'No he podido encajar las líneas de «' + f.name + '» con esta página del PDF' + (cad && cad.segs.length < 16 ? ' (el CAD casi no tiene líneas: puede que el dibujo esté en referencias externas)' : '') + '. Comprueba que es el mismo plano, o usa «Calibrar a mano».', 'Entendido'); return; }
   const known = CAD_UNITS[cad.units];
-  const opts = (known ? [[cad.units, known]] : [[4,1],[5,10],[6,1000]]).map(([u, k]) => ({u, mmPerPt: res.r * k, n: res.r * k / PT_MM}));
+  const opts = (known ? [[cad.units, known]] : [[4,1],[5,10],[6,1000]]).map(([u, k]) => { let n = res.r * k / PT_MM; const raw = n; for(const st of STD) if(Math.abs(n - st) / st < 0.004) n = st; return {u, n, raw, mmPerPt: n * PT_MM}; });
   const U = {1:'pulgadas', 2:'pies', 4:'mm', 5:'cm', 6:'m'};
   let pick = opts.slice().sort((a, b) => { const sc = o => (o.n >= 5 && o.n <= 2000 ? 0 : 10) + Math.abs(Math.log(o.n / 100)); return sc(a) - sc(b); })[0];
   sheet((sh, close) => {
-    const lbl = o => '1:' + nf(o.n, o.n < 10 ? 2 : 1);
+    const lbl = o => '1:' + (Math.abs(o.n - Math.round(o.n)) < 0.05 ? nf(Math.round(o.n), 0) : nf(o.n, o.n < 10 ? 2 : 1));
     const big = h('b',{style:'font-size:26px'}, lbl(pick));
     const unitRow = known ? h('p',{}, 'Unidades del dibujo: ' + U[cad.units] + '.') : h('div',{}, h('p',{}, 'El archivo no dice en qué unidades está dibujado. ¿Están en…?'), h('div',{class:'chips'}, ...opts.map(o => { const b = chipBtn(U[o.u] + ' → ' + lbl(o), o === pick, () => { pick = o; big.textContent = lbl(o); b.parentElement.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c === b)); }); return b; })));
     sh.append(h('h2',{}, 'Escala sacada del CAD'), h('div',{class:'autores'}, h('div',{}, h('span',{}, 'Escala real de este PDF'), big)),
-      h('p',{}, 'Coinciden ' + res.support + ' líneas del PDF con el CAD' + (() => { let g = res.rot; for(const q of [0, 90, 180]) if(Math.abs(g - q) <= 2) g = q; return g % 180 ? ' (el PDF está girado ' + nf(g, 0) + '°)' : ''; })() + '.'), unitRow,
+      Math.abs(pick.raw - pick.n) > 0.01 ? h('p',{}, 'Medida: 1:' + nf(pick.raw, 2) + ' → se redondea a la escala normal más próxima.') : '',
+      h('p',{}, (res.how === 'ejes' ? 'Se alinean ' + res.support + ' ejes y caras de muros del PDF con el CAD' : 'Coinciden ' + res.support + ' líneas del PDF con el CAD') + (() => { let g = res.rot; for(const q of [0, 90, 180]) if(Math.abs(g - q) <= 2) g = q; return g % 180 ? ' (el PDF está girado ' + nf(g, 0) + '°)' : ''; })() + '.'), unitRow,
       acts(h('button',{class:'btn', onclick:() => close()}, 'Cancelar'), h('button',{class:'btn pri', onclick:() => { setScale(pi, {n: pick.n, mmPerPt: pick.mmPerPt, label: lbl(pick) + ' (CAD)'}, all); close(); toast('Escala ' + lbl(pick) + ' aplicada'); }}, 'Aplicar')));
   });
 }
@@ -2282,7 +2357,7 @@ setInterval(() => { if(E){ const p = currentPage(); if(p !== lastTagPage){ lastT
 (async () => { await DB.open(); refreshLib(); initPdf().catch(()=>{}); })();
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 /* Actualizaciones sin tener que cerrar la app */
-const APP_V = '2026.11.11-15';
+const APP_V = '2026.11.11-16';
 async function checkUpdate(manual){
   try {
     const r = await fetch('index.html?v=' + Date.now(), {cache:'no-store'}); if(!r.ok) throw 0;
