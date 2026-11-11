@@ -391,7 +391,7 @@ async function refreshLib(){
   const all = await DB.all('notes');
   obras = all.filter(n => n.kind === 'obra').sort((a,b) => natural(a.name, b.name));
   notes = all.filter(n => n.kind !== 'obra').sort((a,b) => b.updated - a.updated);
-  const CLASS_V = 7;
+  const CLASS_V = 8;
   if((prefs.classV || 0) < CLASS_V){
     for(const n of notes) if(n.kind === 'pdf' && !n.manualTags){ const c = classify(n.title); if(c.zona !== (n.zona||'') || c.inst !== (n.inst||'')){ n.zona = c.zona || n.zona || ''; n.inst = c.inst || n.inst || ''; await DB.put('notes', n.id, n); } }
     prefs.classV = CLASS_V; savePrefs();
@@ -663,6 +663,8 @@ function classify(name){
   const NU = name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
   if(/\bfoyer\b/i.test(zona) && /(^|[^A-Z])(ASE(O|OS)?|BANOS?)([^A-Z]|$)/.test(NU)) zona = zona.replace(/((aseos?|banos?)\s+(de\s+)?)?foyer(\s+(aseos?|banos?))?/i, 'Aseos foyer');
   else if(/^(aseos?|banos?)$/i.test(zona) && /FOYER|(^|[^A-Z])FOY([^A-Z]|$)/.test(name.toUpperCase())) zona = 'Aseos foyer';
+  // Planos que no son de instalaciones (sin «INST» en el nombre ni tema reconocido): obra civil
+  if(!inst && !/\bINST(ALACION(ES)?)?\b/.test(t)) inst = 'Obra civil';
   zona = [bloque, zona].filter(Boolean).join(' · ');
   return {zona, inst};
 }
@@ -2081,7 +2083,7 @@ setInterval(() => { if(E){ const p = currentPage(); if(p !== lastTagPage){ lastT
 (async () => { await DB.open(); refreshLib(); initPdf().catch(()=>{}); })();
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 /* Actualizaciones sin tener que cerrar la app */
-const APP_V = '2026.11.11-8';
+const APP_V = '2026.11.11-9';
 async function checkUpdate(manual){
   try {
     const r = await fetch('index.html?v=' + Date.now(), {cache:'no-store'}); if(!r.ok) throw 0;
