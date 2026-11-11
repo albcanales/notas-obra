@@ -209,7 +209,7 @@ body.selmode #lib{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
   <div class="lhead">
     <h1>Notas de obra</h1>
     <div class="obras" id="obras"></div>
-    <button class="btn" id="bDalux" hidden><svg class="i"><use href="#i-share"/></svg>Dalux</button>
+    <button class="btn" id="bDalux" hidden style="display:none"></button>
     <button class="btn" id="bBlank"><svg class="i"><use href="#i-plus"/></svg>En blanco</button>
     <button class="btn pri" id="bImport"><svg class="i"><use href="#i-pdf"/></svg>Importar</button>
     <input type="file" id="file" multiple accept="application/pdf,.pdf,application/zip,.zip" hidden>
@@ -502,7 +502,6 @@ function renderLib(){
   obras.forEach(o => ob.append(chipBtn(o.name, curObra === o.id, () => curObra === o.id ? obraMenu(o) : selObra(o.id))));
   ob.append(chipBtn('+ Obra', false, newObra, 'add'));
   const o = obras.find(x => x.id === curObra);
-  $('#bDalux').hidden = !o;
   const q = $('#q').value.trim().toLowerCase();
   const inObraAll = notes.filter(n => !curObra || n.obra === curObra);
   const nOld = inObraAll.filter(n => n.superseded).length;
@@ -551,7 +550,6 @@ async function newObra(){
 function obraMenu(o){
   sheet((sh, close) => {
     sh.append(h('h2',{}, o.name), h('div',{class:'menu'},
-      h('button',{onclick:() => { close(); daluxLink(o); }}, svgIcon('i-share'), o.dalux ? 'Cambiar enlace de Dalux' : 'Poner enlace de Dalux'),
       h('button',{onclick:async () => { close(); const t = await askText('Renombrar obra', o.name); if(t && t.trim()){ o.name = t.trim(); await DB.put('notes', o.id, o); refreshLib(); } }}, svgIcon('i-text'), 'Renombrar'),
       h('button',{onclick:async () => { close(); if(await confirmSheet('Quitar obra', 'Se quita la obra «' + o.name + '». Sus planos no se borran: pasan a «Todas» sin obra.', 'Quitar')){ for(const n of notes.filter(n => n.obra === o.id)){ n.obra = ''; await DB.put('notes', n.id, n); } await DB.del('notes', o.id); selObra(''); refreshLib(); } }}, svgIcon('i-trash'), 'Quitar obra')));
   });
@@ -2085,7 +2083,7 @@ setInterval(() => { if(E){ const p = currentPage(); if(p !== lastTagPage){ lastT
 (async () => { await DB.open(); refreshLib(); initPdf().catch(()=>{}); })();
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 /* Actualizaciones sin tener que cerrar la app */
-const APP_V = '2026.11.11-11';
+const APP_V = '2026.11.11-12';
 async function checkUpdate(manual){
   try {
     const r = await fetch('index.html?v=' + Date.now(), {cache:'no-store'}); if(!r.ok) throw 0;
