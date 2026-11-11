@@ -389,7 +389,7 @@ async function refreshLib(){
   const all = await DB.all('notes');
   obras = all.filter(n => n.kind === 'obra').sort((a,b) => natural(a.name, b.name));
   notes = all.filter(n => n.kind !== 'obra').sort((a,b) => b.updated - a.updated);
-  const CLASS_V = 6;
+  const CLASS_V = 7;
   if((prefs.classV || 0) < CLASS_V){
     for(const n of notes) if(n.kind === 'pdf' && !n.manualTags){ const c = classify(n.title); if(c.zona !== (n.zona||'') || c.inst !== (n.inst||'')){ n.zona = c.zona || n.zona || ''; n.inst = c.inst || n.inst || ''; await DB.put('notes', n.id, n); } }
     prefs.classV = CLASS_V; savePrefs();
@@ -658,8 +658,9 @@ function classify(name){
   else if(/\bEXT(?:ERIOR)?\b/.test(t)) zona = 'Exterior';
   if(zp) zona = zp.zona;
   // Los aseos del foyer son una zona propia, aunque «ASEOS» vaya separado de «FOYER» en el nombre
-  if(/\bfoyer\b/i.test(zona) && /(^|[^A-Z])ASE(O|OS)?([^A-Z]|$)/.test(name.normalize('NFD').toUpperCase())) zona = zona.replace(/(aseos?\s+(de\s+)?)?foyer(\s+aseos?)?/i, 'Aseos foyer');
-  else if(/^aseos?$/i.test(zona) && /FOYER|(^|[^A-Z])FOY([^A-Z]|$)/.test(name.toUpperCase())) zona = 'Aseos foyer';
+  const NU = name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
+  if(/\bfoyer\b/i.test(zona) && /(^|[^A-Z])(ASE(O|OS)?|BANOS?)([^A-Z]|$)/.test(NU)) zona = zona.replace(/((aseos?|banos?)\s+(de\s+)?)?foyer(\s+(aseos?|banos?))?/i, 'Aseos foyer');
+  else if(/^(aseos?|banos?)$/i.test(zona) && /FOYER|(^|[^A-Z])FOY([^A-Z]|$)/.test(name.toUpperCase())) zona = 'Aseos foyer';
   zona = [bloque, zona].filter(Boolean).join(' · ');
   return {zona, inst};
 }
