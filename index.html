@@ -753,10 +753,10 @@ async function getHandle(id){
   try { return await DB.get('handles', id) || null; } catch(e){ return null; } finally { try { localStorage.removeItem(FH_FLAG); } catch(e){} }
 }
 async function saveHandle(id, f){ if(!fhOff && f && f.__fh) try { await DB.put('handles', id, f.__fh); } catch(e){ console.warn('handle', e); } }
+// En Android el acceso a un archivo de OneDrive solo dura mientras la app está abierta: si ya no hay permiso, no se pregunta (fallaría igual)
+async function handleUsable(fh){ try { return !fh.queryPermission || (await fh.queryPermission({mode:'read'})) === 'granted'; } catch(e){ return false; } }
 async function fileFromHandle(fh){
-  if(fh.queryPermission && (await fh.queryPermission({mode:'read'})) !== 'granted'){
-    if(!fh.requestPermission || (await fh.requestPermission({mode:'read'})) !== 'granted') throw new Error('sin permiso');
-  }
+  if(!(await handleUsable(fh))) throw new Error('sin permiso');
   return await fh.getFile();
 }
 async function restoreFrom(n, file){
@@ -798,14 +798,14 @@ async function restoreSheet(n){
   // Si se sabe dónde estaba el PDF, se recupera directamente sin preguntar
   const fh = await getHandle(n.id);
   let why = '';
-  if(fh){
+  if(fh && await handleUsable(fh)){
     const done = busy('Recuperando de ' + (fh.name || 'su ubicación') + '…');
     try { const f = await fileFromHandle(fh); f.__fh = fh; done(); if(await restoreWith(n, f, true)){ await refreshLib(); openNote(n.id); return; } }
     catch(e){ done(); console.warn(e); why = (/permiso/.test(e.message) ? 'No se dio permiso para leer el archivo.' : 'No se pudo leer el PDF donde estaba (puede que lo hayan movido, renombrado o que no haya conexión).') + ' [' + ((e && e.name) || 'Error') + (e && e.message ? ': ' + String(e.message).slice(0, 90) : '') + ']'; }
   }
   sheet((sh, close) => {
     sh.append(h('h2',{}, 'Plano archivado'),
-      h('p',{}, (why ? why + ' ' : '') + '«' + n.title + '» está archivado para ahorrar espacio. Tus notas, medidas y fotos siguen guardadas. Elige otra vez el PDF (de la nube o del móvil) y se recupera todo; la app recordará dónde está para la próxima vez.'),
+      h('p',{}, (why ? why + ' ' : '') + '«' + n.title + '» está archivado para ahorrar espacio. Tus notas, medidas y fotos siguen guardadas. Elige otra vez el PDF (de la nube o del móvil) y se recupera todo. Mientras no cierres la app, los que recuperes así se vuelven a abrir sin buscarlos.'),
       acts(h('button',{class:'btn', onclick:() => close()}, 'Cancelar'),
         h('button',{class:'btn pri', onclick:async () => { close(); const f = await pickOnePdf(n); if(!f) return; if(await restoreWith(n, f, false)){ await refreshLib(); openNote(n.id); } }}, 'Elegir el PDF')));
   });
@@ -2081,7 +2081,7 @@ setInterval(() => { if(E){ const p = currentPage(); if(p !== lastTagPage){ lastT
 (async () => { await DB.open(); refreshLib(); initPdf().catch(()=>{}); })();
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 /* Actualizaciones sin tener que cerrar la app */
-const APP_V = '2026.11.11-7';
+const APP_V = '2026.11.11-8';
 async function checkUpdate(manual){
   try {
     const r = await fetch('index.html?v=' + Date.now(), {cache:'no-store'}); if(!r.ok) throw 0;
