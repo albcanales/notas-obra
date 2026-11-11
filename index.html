@@ -223,6 +223,7 @@ body.selmode #lib{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
   <div class="empty" id="empty" hidden><b>Aún no hay planos</b>Crea una obra con «+ Obra» e importa sus planos en PDF (puedes seleccionar muchos a la vez). Se clasifican solos por zona e instalación según el nombre del archivo.</div>
   <div class="foot">Las notas se guardan en este dispositivo.<br><button class="linkbtn" id="bSpace">Espacio ocupado…</button><br><button class="linkbtn" id="bVer" style="margin-top:6px">Buscar actualización</button></div>
   <input type="file" id="reIn" accept="application/pdf,.pdf" hidden>
+  <input type="file" id="cadIn" hidden>
   <div id="selBar" hidden>
     <div class="cnt"><button class="linkbtn" id="sCancel" style="margin-left:0;color:var(--ink)">✕</button><span id="sCount">0 seleccionados</span><button class="linkbtn" id="sAll">Seleccionar todos</button></div>
     <button class="btn" id="sMove"><svg class="i"><use href="#i-share"/></svg>Mover</button>
@@ -1472,6 +1473,7 @@ function scaleSheet(pi){
       h('p',{}, 'Actual: ' + (cur ? cur.label : 'sin escala') + '.'),
       auto,
       isPdf ? h('button',{class:'btn wide', onclick:() => { close(); setTool('cota'); E.calAll = all.checked; toast('Toca el número de una cota o una etiqueta «L = …» de un tramo', 3500); }}, svgIcon('i-len'), 'Tocar una cota o una «L =» del plano') : null,
+      isPdf ? h('button',{class:'btn wide', style:'margin-top:8px', onclick:() => { close(); cadScale(pi, all.checked); }}, svgIcon('i-scale'), 'Sacarla del CAD (DWG o DXF)') : null,
       h('p',{style:'margin-top:14px'}, 'O elige la escala a mano (exacta si el PDF sale de CAD al tamaño de papel real):'),
       chips, h('div',{class:'row'}, custom),
       h('label',{class:'check'}, all, 'Aplicar a todas las páginas'),
@@ -1491,6 +1493,195 @@ function scaleSheet(pi){
       res.why.forEach(w => auto.append(h('div',{class:'why'}, '· ' + w)));
       if(res.alts.length) auto.append(h('div',{class:'why'}, 'Otras posibles: ', ...res.alts.map(a => h('button',{class:'chip sm', onclick:() => apply(a.n, '1:' + nf(a.n,0) + ' (auto)')}, '1:' + nf(a.n,0) + (a.note ? ' ' + a.note : '')))));
     }).catch(e => { console.warn(e); auto.innerHTML = ''; auto.classList.add('none'); auto.append('No se pudo analizar el plano.'); });
+  });
+}
+
+/* ---------- Escala con el CAD (DWG o DXF) ---------- */
+const DWG_BASE = PDFJS_BASE === 'lib/' ? 'lib/dwg/' : 'https://cdn.jsdelivr.net/npm/@mlightcad/libredwg-web@0.8.2/';
+let dwgLib = null;
+async function loadDwgLib(){
+  if(!dwgLib) dwgLib = (async () => { const m = await import(new URL(DWG_BASE + 'dist/libredwg-web.js', location.href).href); const lib = await m.LibreDwg.create(new URL(DWG_BASE + 'wasm/', location.href).href.replace(/\/$/, '')); return {lib, T: m.Dwg_File_Type}; })();
+  try { return await dwgLib; } catch(e){ dwgLib = null; throw e; }
+}
+/* Lectura de segmentos de un CAD (DXF propio, DWG con libredwg) */
+const CAD_UNITS = {1:25.4, 2:304.8, 4:1, 5:10, 6:1000};
+function cadXf(m, x, y){ return [m[0]*x + m[2]*y + m[4], m[1]*x + m[3]*y + m[5]]; }
+function cadMul(a, b){ return [a[0]*b[0]+a[2]*b[1], a[1]*b[0]+a[3]*b[1], a[0]*b[2]+a[2]*b[3], a[1]*b[2]+a[3]*b[3], a[0]*b[4]+a[2]*b[5]+a[4], a[1]*b[4]+a[3]*b[5]+a[5]]; }
+function insertXf(ins, base){
+  const sx = ins.sx || 1, sy = ins.sy || sx, r = ins.rot || 0, c = Math.cos(r), s = Math.sin(r);
+  // punto del bloque → (p - base)·escala → giro → + inserción
+  const m = [c*sx, s*sx, -s*sy, c*sy, 0, 0];
+  const t = cadXf(m, -(base ? base[0] : 0), -(base ? base[1] : 0));
+  m[4] = t[0] + ins.x; m[5] = t[1] + ins.y; return m;
+}
+// ents: [{t:'seg', pts:[x,y,...], closed} | {t:'ins', name, x, y, sx, sy, rot}] ; blocks: {name: {base:[x,y], ents}}
+function cadFlatten(ents, blocks, MAX = 400000){
+  const out = [];
+  const walk = (list, m, depth) => {
+    for(const e of list){
+      if(out.length >= MAX * 4) return;
+      if(e.t === 'seg'){
+        const p = e.pts; const n = p.length / 2;
+        for(let i = 0; i + 1 < n; i++){ const a = cadXf(m, p[2*i], p[2*i+1]), b = cadXf(m, p[2*i+2], p[2*i+3]); out.push(a[0], a[1], b[0], b[1]); }
+        if(e.closed && n > 2){ const a = cadXf(m, p[2*n-2], p[2*n-1]), b = cadXf(m, p[0], p[1]); out.push(a[0], a[1], b[0], b[1]); }
+      } else if(e.t === 'ins' && depth < 5){
+        const b = blocks[e.name]; if(!b || /^\*(Model|Paper)_Space/i.test(e.name)) continue;
+        walk(b.ents, cadMul(m, insertXf(e, b.base)), depth + 1);
+      }
+    }
+  };
+  walk(ents, [1,0,0,1,0,0], 0);
+  return out;
+}
+function parseDxf(text){
+  const L = text.split(/\r?\n/); const pr = [];
+  for(let i = 0; i + 1 < L.length; i += 2) pr.push([parseInt(L[i], 10), L[i+1].trim()]);
+  let units = 0, sec = null; const ents = [], blocks = {}; let curBlock = null;
+  let i = 0;
+  const num = v => parseFloat(v) || 0;
+  while(i < pr.length){
+    const [c, v] = pr[i];
+    if(c === 0 && v === 'SECTION'){ sec = pr[i+1] && pr[i+1][1]; i += 2; continue; }
+    if(c === 0 && v === 'ENDSEC'){ sec = null; i++; continue; }
+    if(sec === 'HEADER' && c === 9 && v === '$INSUNITS'){ units = parseInt(pr[i+1][1], 10) || 0; i += 2; continue; }
+    if((sec === 'ENTITIES' || sec === 'BLOCKS') && c === 0){
+      const type = v; const g = []; i++;
+      while(i < pr.length && pr[i][0] !== 0){ g.push(pr[i]); i++; }
+      const get = (k, d) => { const f = g.find(q => q[0] === k); return f ? f[1] : d; };
+      const target = sec === 'BLOCKS' ? (curBlock ? curBlock.ents : null) : ents;
+      if(type === 'BLOCK'){ curBlock = {base:[num(get(10,0)), num(get(20,0))], ents:[]}; blocks[get(2,'')] = curBlock; continue; }
+      if(type === 'ENDBLK'){ curBlock = null; continue; }
+      if(sec === 'ENTITIES' && get(67, '0') === '1') { if(type === 'POLYLINE'){ while(i < pr.length && !(pr[i][0] === 0 && pr[i][1] === 'SEQEND')) i++; } continue; }
+      if(!target) continue;
+      if(type === 'LINE') target.push({t:'seg', pts:[num(get(10)), num(get(20)), num(get(11)), num(get(21))]});
+      else if(type === 'LWPOLYLINE'){ const pts = []; for(const [k, val] of g){ if(k === 10) pts.push(num(val)); else if(k === 20) pts.push(num(val)); } target.push({t:'seg', pts, closed: (parseInt(get(70,'0'),10) & 1) === 1}); }
+      else if(type === 'POLYLINE'){
+        const closed = (parseInt(get(70,'0'),10) & 1) === 1; const pts = [];
+        while(i < pr.length && !(pr[i][0] === 0 && pr[i][1] === 'SEQEND')){
+          if(pr[i][0] === 0 && pr[i][1] === 'VERTEX'){ i++; let x = 0, y = 0; while(i < pr.length && pr[i][0] !== 0){ if(pr[i][0] === 10) x = num(pr[i][1]); else if(pr[i][0] === 20) y = num(pr[i][1]); i++; } pts.push(x, y); }
+          else i++;
+        }
+        target.push({t:'seg', pts, closed});
+      }
+      else if(type === 'INSERT') target.push({t:'ins', name:get(2,''), x:num(get(10)), y:num(get(20)), sx:num(get(41,'1')), sy:num(get(42, get(41,'1'))), rot:num(get(50,'0')) * Math.PI / 180});
+      continue;
+    }
+    i++;
+  }
+  return {segs: cadFlatten(ents, blocks), units};
+}
+function dwgToSegs(db){
+  const recs = (db.tables && db.tables.BLOCK_RECORD && db.tables.BLOCK_RECORD.entries) || [];
+  const conv = e => {
+    if(e.type === 'LINE' && e.startPoint && e.endPoint) return {t:'seg', pts:[e.startPoint.x, e.startPoint.y, e.endPoint.x, e.endPoint.y]};
+    if(Array.isArray(e.vertices) && e.vertices.length){
+      const pts = []; for(const v of e.vertices){ const q = v.point || v; if(q && isFinite(q.x)) pts.push(q.x, q.y); }
+      return {t:'seg', pts, closed: ((e.flag || 0) & 1) === 1};
+    }
+    if(e.type === 'INSERT') return {t:'ins', name:e.name, x:e.insertionPoint.x, y:e.insertionPoint.y, sx:e.xScale || 1, sy:e.yScale || e.xScale || 1, rot:e.rotation || 0};
+    return null;
+  };
+  const blocks = {};
+  for(const b of recs){ blocks[b.name] = {base: b.basePoint ? [b.basePoint.x, b.basePoint.y] : [0,0], ents: (b.entities || []).map(conv).filter(Boolean)}; }
+  const ms = recs.find(b => /^\*Model_Space$/i.test(b.name));
+  const ents = ms && ms.entities && ms.entities.length ? ms.entities.map(conv).filter(Boolean)
+    : (db.entities || []).filter(e => !ms || e.ownerBlockRecordSoftId === ms.handle).map(conv).filter(Boolean);
+  const units = db.header ? (db.header.INSUNITS | 0) : 0;
+  return {segs: cadFlatten(ents, blocks), units};
+}
+/* Escala a partir de CAD: compara longitudes y orientaciones de segmentos del CAD (unidades de dibujo) con los del PDF (puntos) */
+function cadKeys(segs, minLen){
+  // segs: array plano [x1,y1,x2,y2,...] → claves únicas {L, a} (a en grados 0..180)
+  const seen = new Map();
+  for(let i=0; i+3<segs.length; i+=4){
+    const dx = segs[i+2]-segs[i], dy = segs[i+3]-segs[i+1], L = Math.hypot(dx, dy);
+    if(!(L >= minLen)) continue;
+    let a = Math.atan2(dy, dx) * 180 / Math.PI; a = ((a % 180) + 180) % 180;
+    const k = Math.round(Math.log(L) / 0.001) + ':' + Math.round(a * 2);
+    if(!seen.has(k)) seen.set(k, {L, a});
+  }
+  return [...seen.values()].sort((p, q) => q.L - p.L);
+}
+function cadMatchScale(cadSegs, pdfSegs, opt={}){
+  const P = cadKeys(pdfSegs, opt.minPdf || 10).slice(0, 600);
+  if(P.length < 4) return null;
+  const minCad = 0; let C = cadKeys(cadSegs, minCad).slice(0, 1500);
+  if(C.length < 4) return null;
+  const lrMin = Math.log(opt.rMin || 1e-4), lrMax = Math.log(opt.rMax || 1e4);
+  const BW = 0.004, AB = 1; // ancho de clase: 0,4 % en escala, 1° en giro
+  const votes = new Map();
+  for(const c of C){
+    const lc = Math.log(c.L);
+    for(const p of P){
+      const lr = lc - Math.log(p.L); if(lr < lrMin || lr > lrMax) continue;
+      let da = c.a - p.a; da = ((da % 180) + 180) % 180;
+      const kb = Math.round(lr / BW), ka = Math.round(da / AB) % 180;
+      const k = kb * 1000 + ka; votes.set(k, (votes.get(k) || 0) + 1);
+    }
+  }
+  // sumar clases vecinas (±1 en escala y giro)
+  const score = k => { const kb = Math.floor(k / 1000), ka = ((k % 1000) + 1000) % 1000; let s = 0;
+    for(let i=-1;i<=1;i++) for(let j=-1;j<=1;j++){ const kk = (kb+i)*1000 + ((ka+j+180)%180); s += votes.get(kk) || 0; } return s; };
+  const ranked = [...votes.keys()].map(k => ({k, s:score(k)})).sort((a,b) => b.s - a.s);
+  if(!ranked.length) return null;
+  const best = ranked[0];
+  const bkb = Math.floor(best.k / 1000), bka = ((best.k % 1000) + 1000) % 1000;
+  // segundo pico claramente distinto
+  const second = ranked.find(r => Math.abs(Math.floor(r.k/1000) - bkb) > 5 || Math.min(Math.abs((((r.k%1000)+1000)%1000) - bka), 180 - Math.abs((((r.k%1000)+1000)%1000) - bka)) > 4);
+  // afinar: histograma fino alrededor del pico y mediana en una ventana estrecha
+  const rot = bka * AB; const lrc = bkb * BW; const pairs = [];
+  for(const c of C){ const lc = Math.log(c.L);
+    for(const p of P){ const lr = lc - Math.log(p.L); if(Math.abs(lr - lrc) > 2.5*BW) continue;
+      let da = c.a - p.a; da = ((da % 180) + 180) % 180; let dd = Math.abs(da - rot); dd = Math.min(dd, 180 - dd); if(dd > 1.5*AB) continue;
+      pairs.push({lr, p}); } }
+  const FB = 0.0004, fh = new Map(); for(const q of pairs){ const b = Math.round(q.lr / FB); fh.set(b, (fh.get(b) || 0) + 1); }
+  let fb = Math.round(lrc / FB), fs = -1; for(const b of fh.keys()){ const s = (fh.get(b-1)||0) + 2*(fh.get(b)||0) + (fh.get(b+1)||0); if(s > fs){ fs = s; fb = b; } }
+  const near = pairs.filter(q => Math.abs(q.lr - fb*FB) <= 1.5*FB).map(q => q.lr).sort((x, y) => x - y);
+  let lr0 = near.length ? near[near.length >> 1] : fb*FB;
+  const used = new Set(pairs.filter(q => Math.abs(q.lr - lr0) <= 0.002).map(q => q.p));
+  const r = Math.exp(lr0);
+  return {r, rot, support: used.size, nPdf: P.length, nCad: C.length, peak: best.s, second: second ? second.s : 0};
+}
+
+async function readCad(file){
+  const name = file.name.toLowerCase();
+  if(name.endsWith('.dxf')) return parseDxf(await file.text());
+  if(name.endsWith('.dwg')){
+    const {lib, T} = await loadDwgLib();
+    const dwg = lib.dwg_read_data(await file.arrayBuffer(), T.DWG);
+    if(!dwg) throw new Error('No se pudo leer el DWG');
+    let db; try { db = lib.convert(dwg); } finally { try { lib.dwg_free(dwg); } catch(e){} }
+    return dwgToSegs(db);
+  }
+  throw new Error('Elige un archivo .dwg o .dxf');
+}
+function cadPick(){
+  return new Promise(res => { const inp = $('#cadIn'); inp.value = ''; inp.onchange = () => res(inp.files[0] || null); inp.click(); });
+}
+async function cadScale(pi, all){
+  const f = await cadPick(); if(!f) return;
+  const done = busy(/\.dwg$/i.test(f.name) ? 'Leyendo el DWG… (la primera vez descarga el lector, unos 10 MB)' : 'Leyendo el DXF…');
+  let cad, res;
+  try {
+    cad = await readCad(f);
+    const A = await analyzePage(pi);
+    const ps = new Array(A.segs.length); for(let i = 0; i < A.segs.length; i += 2){ ps[i] = A.segs[i]; ps[i+1] = -A.segs[i+1]; }
+    res = cad.segs.length >= 16 ? cadMatchScale(cad.segs, ps, {}) : null;
+  } catch(e){ done(); console.error(e); toast(e.message || 'No se pudo leer el CAD', 4500); return; }
+  done();
+  const ok = res && res.support >= 12 && res.peak >= 1.25 * Math.max(1, res.second);
+  if(!ok){ await confirmSheet('No encaja', 'No he podido encajar las líneas de «' + f.name + '» con esta página del PDF' + (cad && cad.segs.length < 16 ? ' (el CAD casi no tiene líneas: puede que el dibujo esté en referencias externas)' : '') + '. Comprueba que es el mismo plano, o usa «Calibrar a mano».', 'Entendido'); return; }
+  const known = CAD_UNITS[cad.units];
+  const opts = (known ? [[cad.units, known]] : [[4,1],[5,10],[6,1000]]).map(([u, k]) => ({u, mmPerPt: res.r * k, n: res.r * k / PT_MM}));
+  const U = {1:'pulgadas', 2:'pies', 4:'mm', 5:'cm', 6:'m'};
+  let pick = opts.slice().sort((a, b) => { const sc = o => (o.n >= 5 && o.n <= 2000 ? 0 : 10) + Math.abs(Math.log(o.n / 100)); return sc(a) - sc(b); })[0];
+  sheet((sh, close) => {
+    const lbl = o => '1:' + nf(o.n, o.n < 10 ? 2 : 1);
+    const big = h('b',{style:'font-size:26px'}, lbl(pick));
+    const unitRow = known ? h('p',{}, 'Unidades del dibujo: ' + U[cad.units] + '.') : h('div',{}, h('p',{}, 'El archivo no dice en qué unidades está dibujado. ¿Están en…?'), h('div',{class:'chips'}, ...opts.map(o => { const b = chipBtn(U[o.u] + ' → ' + lbl(o), o === pick, () => { pick = o; big.textContent = lbl(o); b.parentElement.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c === b)); }); return b; })));
+    sh.append(h('h2',{}, 'Escala sacada del CAD'), h('div',{class:'autores'}, h('div',{}, h('span',{}, 'Escala real de este PDF'), big)),
+      h('p',{}, 'Coinciden ' + res.support + ' líneas del PDF con el CAD' + (() => { let g = res.rot; for(const q of [0, 90, 180]) if(Math.abs(g - q) <= 2) g = q; return g % 180 ? ' (el PDF está girado ' + nf(g, 0) + '°)' : ''; })() + '.'), unitRow,
+      acts(h('button',{class:'btn', onclick:() => close()}, 'Cancelar'), h('button',{class:'btn pri', onclick:() => { setScale(pi, {n: pick.n, mmPerPt: pick.mmPerPt, label: lbl(pick) + ' (CAD)'}, all); close(); toast('Escala ' + lbl(pick) + ' aplicada'); }}, 'Aplicar')));
   });
 }
 async function calibrate(d){
@@ -2083,7 +2274,7 @@ setInterval(() => { if(E){ const p = currentPage(); if(p !== lastTagPage){ lastT
 (async () => { await DB.open(); refreshLib(); initPdf().catch(()=>{}); })();
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 /* Actualizaciones sin tener que cerrar la app */
-const APP_V = '2026.11.11-13';
+const APP_V = '2026.11.11-14';
 async function checkUpdate(manual){
   try {
     const r = await fetch('index.html?v=' + Date.now(), {cache:'no-store'}); if(!r.ok) throw 0;
