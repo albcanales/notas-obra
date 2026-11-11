@@ -389,7 +389,7 @@ async function refreshLib(){
   const all = await DB.all('notes');
   obras = all.filter(n => n.kind === 'obra').sort((a,b) => natural(a.name, b.name));
   notes = all.filter(n => n.kind !== 'obra').sort((a,b) => b.updated - a.updated);
-  const CLASS_V = 4;
+  const CLASS_V = 5;
   if((prefs.classV || 0) < CLASS_V){
     for(const n of notes) if(n.kind === 'pdf' && !n.manualTags){ const c = classify(n.title); if(c.zona !== (n.zona||'') || c.inst !== (n.inst||'')){ n.zona = c.zona || n.zona || ''; n.inst = c.inst || n.inst || ''; await DB.put('notes', n.id, n); } }
     prefs.classV = CLASS_V; savePrefs();
@@ -657,6 +657,8 @@ function classify(name){
   else if(/\bPARKING\b/.test(t)) zona = 'Parking';
   else if(/\bEXT(?:ERIOR)?\b/.test(t)) zona = 'Exterior';
   if(zp) zona = zp.zona;
+  // Zonas que se agrupan en otra: los aseos del foyer van con el Foyer
+  if(/\baseos?\b/i.test(zona) && /\bfoyer\b/i.test(zona)) zona = 'Foyer';
   zona = [bloque, zona].filter(Boolean).join(' · ');
   return {zona, inst};
 }
