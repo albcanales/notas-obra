@@ -1655,7 +1655,15 @@ async function readCad(file){
   }
   throw new Error('Elige un archivo .dwg o .dxf');
 }
-function cadPick(){
+async function cadPick(){
+  if(window.showOpenFilePicker && !prefs.legacyPicker){
+    const near = E.meta ? await getHandle(E.meta.id) : null;
+    const opts = {multiple:false, id:'cad'};
+    try { const [fh] = await window.showOpenFilePicker(near ? {...opts, startIn:near} : opts); return await fh.getFile(); }
+    catch(err){ if(err && err.name === 'AbortError') return null;
+      if(near) try { const [fh] = await window.showOpenFilePicker(opts); return await fh.getFile(); } catch(e2){ if(e2 && e2.name === 'AbortError') return null; }
+      console.warn(err); }
+  }
   return new Promise(res => { const inp = $('#cadIn'); inp.value = ''; inp.onchange = () => res(inp.files[0] || null); inp.click(); });
 }
 async function cadScale(pi, all){
@@ -2274,7 +2282,7 @@ setInterval(() => { if(E){ const p = currentPage(); if(p !== lastTagPage){ lastT
 (async () => { await DB.open(); refreshLib(); initPdf().catch(()=>{}); })();
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 /* Actualizaciones sin tener que cerrar la app */
-const APP_V = '2026.11.11-14';
+const APP_V = '2026.11.11-15';
 async function checkUpdate(manual){
   try {
     const r = await fetch('index.html?v=' + Date.now(), {cache:'no-store'}); if(!r.ok) throw 0;
