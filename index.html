@@ -173,6 +173,60 @@ body.selmode #lib{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
 #selBar .btn:disabled{opacity:.4}
 #updBar{position:fixed;left:12px;right:12px;top:calc(10px + env(safe-area-inset-top));z-index:50;background:#1c1f26;color:#fff;border-radius:14px;padding:10px 10px 10px 16px;display:flex;align-items:center;gap:10px;box-shadow:0 6px 20px rgba(0,0,0,.35);font-weight:600;font-size:14px}
 #updBar span{flex:1}
+/* Actas de obra */
+#bActas[hidden]{display:none}
+#acta{position:fixed;inset:0;z-index:20;background:var(--bg);display:flex;flex-direction:column}
+#acta[hidden]{display:none}
+#acta .abar{display:flex;align-items:center;gap:6px;padding:calc(6px + env(safe-area-inset-top)) 6px 6px;background:var(--surface);border-bottom:1px solid var(--line)}
+#acta .att{flex:1;min-width:0;display:flex;flex-direction:column}
+#acta .att b{font-size:17px}
+#acta .att small{color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#acta .abody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:10px 12px 90px}
+#acta .afoot{position:absolute;left:0;right:0;bottom:0;display:flex;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:linear-gradient(transparent, var(--bg) 30%)}
+#acta .afoot .btn{flex:1;justify-content:center;height:48px;font-size:15px}
+.asec{background:var(--surface);border-radius:14px;padding:10px 12px;margin-bottom:10px;box-shadow:var(--shadow)}
+.asec summary{font-weight:700;font-size:14.5px;cursor:pointer;padding:2px 0}
+.asec[open] summary{margin-bottom:8px}
+.af{display:flex;flex-direction:column;gap:4px;margin:6px 0;flex:1;min-width:0}
+.af span{font-size:12px;color:var(--muted);font-weight:600}
+.agrid{display:grid;grid-template-columns:70px 1fr 100px;gap:8px}
+.agrid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.field.ta{height:auto;min-height:96px;padding:10px 12px;line-height:1.4;resize:vertical}
+.alist{display:flex;flex-direction:column}
+.arow{display:grid;grid-template-columns:30% 1fr 24%;gap:8px;text-align:left;padding:8px 2px;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--ink)}
+.arow .rol{color:var(--muted);font-weight:600}
+.arow .nom{overflow-wrap:anywhere}
+.arow.mk .rol,.arow.mk .nom,.arow.mk .emp{background:color-mix(in srgb, #ffd43b 45%, transparent);border-radius:4px}
+.ah{font-size:14px;margin:16px 2px 8px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+.apt{background:var(--surface);border-radius:14px;padding:10px 12px;margin-bottom:8px;box-shadow:var(--shadow);cursor:pointer}
+.apt.res{opacity:.6}
+.aph{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.anum{min-width:30px;height:26px;border-radius:8px;background:var(--accent);color:var(--accent-ink);font-weight:800;font-size:13px;display:inline-grid;place-items:center;padding:0 6px;flex:none}
+.aresp{font-weight:700;font-size:12.5px;flex:1;min-width:0}
+.aplazo{font-size:12px;color:var(--muted)}
+.aph .chip{height:30px;font-size:12.5px}
+.atx{font-size:14px;line-height:1.4;white-space:pre-wrap;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden}
+.athumbs{display:flex;gap:6px;margin-top:8px}
+.athumbs img{width:64px;height:48px;object-fit:cover;border-radius:6px;border:1px solid var(--line)}
+.abtns{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.abtns .btn{flex:1;justify-content:center;box-shadow:none;background:var(--surface2);border:1px solid var(--line);min-width:90px}
+.astrip{display:flex;gap:8px;overflow-x:auto;margin-top:10px}
+.ath{width:84px;height:64px;flex:none;border-radius:8px;background:#ccc center/cover;border:1px solid var(--line)}
+.ath.pl{outline:2px solid #e03131}
+.aconf{position:fixed;left:12px;right:12px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:60;background:var(--surface);border-radius:14px;padding:10px 12px;display:flex;gap:8px;align-items:center;box-shadow:0 6px 24px rgba(0,0,0,.35)}
+.aconf span{flex:1;font-weight:600;font-size:14px}
+.aconf .btn.danger{background:#c92a2a;color:#fff}
+.menu .anum{margin-right:2px}
+#pinv{position:fixed;inset:0;z-index:40;background:var(--desk);display:flex;flex-direction:column}
+#pinv .pinh,#pinv .pinf{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--surface)}
+#pinv .pinh{padding-top:calc(8px + env(safe-area-inset-top))}
+#pinv .pinh b{flex:1;font-size:14px}
+#pinv .pinf{padding-bottom:calc(8px + env(safe-area-inset-bottom))}
+#pinv .pinf small{flex:1;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#pinv .pins{flex:1;overflow:auto;-webkit-overflow-scrolling:touch}
+#pinv .pinw{position:relative;width:200%}
+#pinv .pinw img{width:100%;display:block;user-select:none;-webkit-user-select:none}
+#pinv .pinmk{position:absolute;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;background:#e03131;color:#fff;font-weight:800;font-size:14px;display:grid;place-items:center;box-shadow:0 0 0 5px rgba(224,49,49,.35);pointer-events:none}
 #revBar{position:fixed;left:12px;right:12px;bottom:calc(14px + env(safe-area-inset-bottom));z-index:25;background:#1c1f26;color:#fff;border-radius:14px;padding:10px 10px 10px 16px;display:flex;align-items:center;gap:8px;box-shadow:0 6px 20px rgba(0,0,0,.35);font-weight:600;font-size:14px}
 #revBar span{flex:1}
 #odb{position:fixed;inset:0;z-index:28;background:var(--bg);display:flex;flex-direction:column;padding:calc(8px + env(safe-area-inset-top)) 12px calc(10px + env(safe-area-inset-bottom))}
@@ -233,6 +287,7 @@ body.selmode #lib{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
     <button class="btn" id="bDalux" hidden style="display:none"></button>
     <button class="btn" id="bBlank"><svg class="i"><use href="#i-plus"/></svg>En blanco</button>
     <button class="btn pri" id="bImport"><svg class="i"><use href="#i-pdf"/></svg>Importar</button>
+    <button class="btn" id="bActas" hidden><svg class="i"><use href="#i-list"/></svg>Actas</button>
     <input type="file" id="file" multiple accept="application/pdf,.pdf,application/zip,.zip" hidden>
     <input type="file" id="dirIn" webkitdirectory multiple hidden>
     <input class="search" id="q" placeholder="Buscar plano o código" type="search">
@@ -252,6 +307,9 @@ body.selmode #lib{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
     <button class="btn danger" id="sDel"><svg class="i"><use href="#i-trash"/></svg>Eliminar</button>
   </div>
 </main>
+
+<!-- Acta de obra -->
+<section id="acta" hidden></section>
 
 <!-- Editor -->
 <section id="ed" hidden>
@@ -339,6 +397,7 @@ const DB = {
   async get(s,k){ if(this.db) try { return await this._req(s,'readonly',o=>o.get(k)); } catch(e){} return this.mem[s].get(k); },
   async put(s,k,v){ this.mem[s].set(k,v); if(this.db) try { await this._req(s,'readwrite',o=>o.put(v,k)); } catch(e){ console.warn(e); } },
   async del(s,k){ this.mem[s].delete(k); if(this.db) try { await this._req(s,'readwrite',o=>o.delete(k)); } catch(e){} },
+  async keys(s){ if(this.db) try { return await this._req(s,'readonly',o=>o.getAllKeys()); } catch(e){} return [...this.mem[s].keys()]; },
   async all(s){ if(this.db) try { return await this._req(s,'readonly',o=>o.getAll()); } catch(e){} return [...this.mem[s].values()]; }
 };
 
@@ -412,7 +471,8 @@ const natural = (a, b) => a.localeCompare(b, 'es', {numeric:true, sensitivity:'b
 async function refreshLib(){
   const all = await DB.all('notes');
   obras = all.filter(n => n.kind === 'obra').sort((a,b) => natural(a.name, b.name));
-  notes = all.filter(n => n.kind !== 'obra').sort((a,b) => b.updated - a.updated);
+  notes = all.filter(n => n.kind !== 'obra' && n.kind !== 'acta').sort((a,b) => b.updated - a.updated);
+  actas = all.filter(n => n.kind === 'acta');
   const CLASS_V = 9;
   if((prefs.classV || 0) < CLASS_V){
     for(const n of notes) if(n.kind === 'pdf' && !n.manualTags){ const c = classify(n.title); if(c.zona !== (n.zona||'') || c.inst !== (n.inst||'')){ n.zona = c.zona || n.zona || ''; n.inst = c.inst || n.inst || ''; await DB.put('notes', n.id, n); } }
@@ -524,6 +584,7 @@ function renderLib(){
   obras.forEach(o => ob.append(chipBtn(o.name, curObra === o.id, () => curObra === o.id ? obraMenu(o) : selObra(o.id))));
   ob.append(chipBtn('+ Obra', false, newObra, 'add'));
   const o = obras.find(x => x.id === curObra);
+  { const ba = $('#bActas'); ba.hidden = !o; ba.onclick = () => actasSheet(obras.find(x => x.id === curObra)); }
   const q = $('#q').value.trim().toLowerCase();
   const inObraAll = notes.filter(n => !curObra || n.obra === curObra);
   const nOld = inObraAll.filter(n => n.superseded).length;
@@ -2830,10 +2891,500 @@ window.__notas = { get E(){ return E; }, get g(){ return gesture; }, get n(){ re
 // Actualiza la etiqueta de escala al moverse por el documento
 let lastTagPage = -1;
 setInterval(() => { if(E){ const p = currentPage(); if(p !== lastTagPage){ lastTagPage = p; updScaleTag(); } } }, 300);
+/* ======================= ACTAS DE OBRA =======================
+   Cada obra tiene una plantilla (el Word de su última acta). Cada acta nueva copia
+   asistentes y puntos pendientes de la anterior; los puntos llevan texto, responsable,
+   plazo, fotos y recortes del plano. Al final se genera el Word con el mismo formato. */
+const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+const R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+const MESES = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
+const isoHoy = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+const dOf = iso => { const [y,m,d] = (iso || isoHoy(new Date())).split('-').map(Number); return new Date(y, m-1, d); };
+const fechaActa = iso => { const d = dOf(iso); return String(d.getDate()).padStart(2,'0') + MESES[d.getMonth()] + d.getFullYear(); };
+const fechaVisita = iso => { const d = dOf(iso); return String(d.getDate()).padStart(2,'0') + MESES[d.getMonth()] + ' ' + d.getFullYear(); };
+const horaTxt = hhmm => (hhmm || '').replace(':', '.') + 'h';
+const pad2 = n => String(n).padStart(2, '0');
+let actas = [];
+
+/* ---------- Word (docx) por dentro ---------- */
+async function docxOpen(bytes){
+  try { zip.configure({useWebWorkers:false}); } catch(e){}
+  const rd = new zip.ZipReader(new zip.Uint8ArrayReader(new Uint8Array(bytes)));
+  const files = new Map();
+  for(const e of await rd.getEntries()) if(!e.directory) files.set(e.filename, await e.getData(new zip.Uint8ArrayWriter()));
+  await rd.close(); return files;
+}
+const u8txt = u => new TextDecoder().decode(u);
+const xmlDoc = s => new DOMParser().parseFromString(s, 'application/xml');
+const xmlOut = d => { const s = new XMLSerializer().serializeToString(d); return new TextEncoder().encode(/^<\?xml/.test(s) ? s : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' + s); };
+const wAll = (el, tag) => [...el.getElementsByTagNameNS(W_NS, tag)];
+const wKids = (el, tag) => [...el.childNodes].filter(n => n.namespaceURI === W_NS && n.localName === tag);
+const paraText = p => wAll(p, 't').map(t => t.textContent).join('');
+const cellText = tc => wKids(tc, 'p').map(paraText).join('\n').trim();
+const normTxt = s => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+function setParaText(p, text){
+  const doc = p.ownerDocument; const runs = wKids(p, 'r');
+  const proto = runs.find(r => wKids(r, 't').length) || runs[0];
+  const pPr = wKids(p, 'pPr')[0];
+  const rPr = (proto && wKids(proto, 'rPr')[0]) || (pPr && wKids(pPr, 'rPr')[0]); // sin texto: el formato de la marca de párrafo
+  for(const n of [...p.childNodes]) if(!(n.namespaceURI === W_NS && n.localName === 'pPr')) p.removeChild(n);
+  if(text === '') return p;
+  const r = doc.createElementNS(W_NS, 'w:r'); if(rPr) r.appendChild(rPr.cloneNode(true));
+  const t = doc.createElementNS(W_NS, 'w:t'); t.setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve'); t.textContent = text;
+  r.appendChild(t); p.appendChild(r); return p;
+}
+function setCellLines(tc, lines){
+  const ps = wKids(tc, 'p'); const proto = ps.find(p => wAll(p, 't').length) || ps[0];
+  for(const p of ps) tc.removeChild(p);
+  const ls = lines.length ? lines : [''];
+  for(const l of ls) tc.appendChild(setParaText(proto.cloneNode(true), l));
+}
+const AFTER_HL = ['u','effect','bdr','shd','fitText','vertAlign','rtl','cs','em','lang','eastAsianLayout','specVanish','oMath'];
+function setHighlight(row, on){
+  for(const rPr of wAll(row, 'rPr')){
+    for(const x of wKids(rPr, 'highlight')) rPr.removeChild(x);
+    if(!on) continue;
+    const hl = rPr.ownerDocument.createElementNS(W_NS, 'w:highlight'); hl.setAttributeNS(W_NS, 'w:val', 'yellow');
+    const before = [...rPr.childNodes].find(n => n.namespaceURI === W_NS && AFTER_HL.includes(n.localName));
+    rPr.insertBefore(hl, before || null);
+  }
+}
+function actaParts(doc){
+  const body = wAll(doc, 'body')[0]; const blocks = [...body.childNodes].filter(n => n.nodeType === 1);
+  const tbls = blocks.filter(b => b.localName === 'tbl');
+  const title = blocks.find(b => b.localName === 'p' && /ACTA/i.test(paraText(b)));
+  const temas = blocks.find(b => b.localName === 'p' && /^TEMAS TRATADOS/i.test(paraText(b).trim()));
+  const datos = tbls.find(t => /FECHA VISITA/.test(normTxt(t.textContent)));
+  const puntos = tbls.find(t => { const r = wKids(t, 'tr')[0]; return r && /DESCRIPCION/.test(normTxt(r.textContent)); });
+  return {title, temas, datos, puntos};
+}
+function relsMap(files){
+  const d = xmlDoc(u8txt(files.get('word/_rels/document.xml.rels'))); const m = new Map();
+  for(const r of d.getElementsByTagName('Relationship')) m.set(r.getAttribute('Id'), r.getAttribute('Target'));
+  return {d, m};
+}
+const blipsIn = el => [...el.getElementsByTagNameNS('http://schemas.openxmlformats.org/drawingml/2006/main', 'blip')];
+
+/* Lee un acta en Word: número, datos, asistentes y puntos (con sus fotos) */
+async function parseActaDocx(bytes){
+  const files = await docxOpen(bytes);
+  const doc = xmlDoc(u8txt(files.get('word/document.xml')));
+  const P = actaParts(doc); if(!P.datos || !P.puntos) throw new Error('No parece un acta con el formato esperado (faltan las tablas de datos o de puntos)');
+  const {m: rels} = relsMap(files);
+  const out = {num: 0, lugar:'', tema:'', hora:'', asis:[], pts:[]};
+  const tt = P.title ? paraText(P.title) : ''; const mn = tt.match(/N\s*[º°oª]?\s*(\d+)/i); if(mn) out.num = +mn[1];
+  let inPart = false;
+  for(const tr of wKids(P.datos, 'tr')){
+    const c = wKids(tr, 'tc').map(cellText); const k = normTxt(c[0]);
+    if(/^FECHA VISITA/.test(k)){ out.hora = (c[3] || '').replace(/h\s*$/i, '').replace('.', ':').trim(); continue; }
+    if(/^LUGAR/.test(k)){ out.lugar = c[1] || ''; continue; }
+    if(/^TEMA/.test(k)){ out.tema = c[1] || ''; continue; }
+    if(/^PARTICIPANTES/.test(k)){ inPart = true; continue; }
+    if(inPart) out.asis.push({rol: c[0] || '', nom: c[1] || '', emp: c[2] || '', mark: wAll(tr, 'highlight').length > 0});
+  }
+  if(!out.tema && P.temas) out.tema = paraText(P.temas).replace(/^TEMAS TRATADOS\s*/i, '').trim();
+  for(const tr of wKids(P.puntos, 'tr').slice(1)){
+    const tcs = wKids(tr, 'tc'); if(tcs.length < 3) continue;
+    const text = cellText(tcs[1]); if(!text && !blipsIn(tcs[1]).length) continue;
+    const imgs = [];
+    for(const b of blipsIn(tcs[1])){
+      const tg = rels.get(b.getAttributeNS(R_NS, 'embed')); const data = tg && files.get('word/' + tg.replace(/^\/?word\//, ''));
+      let ib = b; while(ib && ib.localName !== 'inline' && ib.localName !== 'anchor') ib = ib.parentNode;
+      const ext = ib && [...ib.childNodes].find(n => n.localName === 'extent'); const cx = ext ? +ext.getAttribute('cx') : 0;
+      if(data) imgs.push({data, type: /\.png$/i.test(tg) ? 'image/png' : 'image/jpeg', full: cx >= 2.8 * 914400});
+    }
+    out.pts.push({n: cellText(tcs[0]), text, resp: cellText(tcs[2]), plazo: tcs[3] ? cellText(tcs[3]) : '', imgs});
+  }
+  return out;
+}
+
+/* Genera el Word del acta a partir de la plantilla */
+async function buildActaDocx(a, tplBytes){
+  const files = await docxOpen(tplBytes);
+  const doc = xmlDoc(u8txt(files.get('word/document.xml')));
+  const P = actaParts(doc); if(!P.datos || !P.puntos) throw new Error('La plantilla no tiene el formato esperado');
+  const {d: relsDoc} = relsMap(files);
+  // Título y «Temas tratados»
+  if(P.title){ let t = paraText(P.title); t = /N\s*[º°oª]?\s*\d+/i.test(t) ? t.replace(/N\s*[º°oª]?\s*\d+/i, 'Nº' + a.num) : t + ' Nº' + a.num;
+    t = /\d{1,2}[A-Z]{3}\s?\d{4}/.test(t) ? t.replace(/\d{1,2}[A-Z]{3}\s?\d{4}/, fechaActa(a.fecha)) : t; setParaText(P.title, t); }
+  if(P.temas) setParaText(P.temas, 'TEMAS TRATADOS ' + (a.tema || '').toUpperCase());
+  // Datos y asistentes
+  const rows = wKids(P.datos, 'tr'); let partRow = null; const old = [];
+  for(const tr of rows){
+    const tcs = wKids(tr, 'tc'); const k = normTxt(cellText(tcs[0]));
+    if(/^FECHA VISITA/.test(k)){ setCellLines(tcs[1], [fechaVisita(a.fecha)]); if(tcs[3]) setCellLines(tcs[3], [horaTxt(a.hora)]); }
+    else if(/^LUGAR/.test(k)) setCellLines(tcs[1], [a.lugar || '']);
+    else if(/^TEMA/.test(k)) setCellLines(tcs[1], [a.tema || '']);
+    else if(/^PARTICIPANTES/.test(k)) partRow = tr;
+    else if(partRow) old.push(tr);
+  }
+  if(partRow){
+    const byRol = new Map(old.map(tr => [normTxt(cellText(wKids(tr, 'tc')[0])), tr]));
+    const base = old[0];
+    for(const tr of old) P.datos.removeChild(tr);
+    let after = partRow;
+    for(const s of a.asis || []){
+      const src = byRol.get(normTxt(s.rol)) || base; if(!src) break;
+      const tr = src.cloneNode(true); const tcs = wKids(tr, 'tc');
+      setCellLines(tcs[0], [s.rol || '']); if(tcs[1]) setCellLines(tcs[1], [s.nom || '']); if(tcs[2]) setCellLines(tcs[2], [s.emp || '']);
+      setHighlight(tr, !!s.mark);
+      after.parentNode.insertBefore(tr, after.nextSibling); after = tr;
+    }
+  }
+  // Puntos: se quitan los de la plantilla (y sus fotos) y se añaden los del acta
+  const prs = wKids(P.puntos, 'tr'); const baseRow = prs[1]; if(!baseRow) throw new Error('La plantilla no tiene ninguna fila de punto');
+  const tplRow = baseRow.cloneNode(true);
+  const dead = new Set();
+  for(const tr of prs.slice(1)){ for(const b of blipsIn(tr)) dead.add(b.getAttributeNS(R_NS, 'embed')); P.puntos.removeChild(tr); }
+  const still = new Set(blipsIn(doc).map(b => b.getAttributeNS(R_NS, 'embed')));
+  for(const r of [...relsDoc.getElementsByTagName('Relationship')]){
+    const id = r.getAttribute('Id'); if(!dead.has(id) || still.has(id)) continue;
+    files.delete('word/' + r.getAttribute('Target').replace(/^\/?word\//, '')); r.parentNode.removeChild(r);
+  }
+  let imgN = 0, docPr = 5000;
+  const addImg = async (img) => {
+    const rec = await DB.get('photos', img.k); if(!rec) return null;
+    imgN++; const name = 'acta' + a.num + '_' + imgN + '.jpg', rId = 'rIdActa' + imgN;
+    files.set('word/media/' + name, new Uint8Array(rec.buf));
+    const rel = relsDoc.createElementNS(relsDoc.documentElement.namespaceURI, 'Relationship');
+    rel.setAttribute('Id', rId); rel.setAttribute('Type', R_NS + '/image'); rel.setAttribute('Target', 'media/' + name);
+    relsDoc.documentElement.appendChild(rel);
+    return {rId, w: rec.w, h: rec.h};
+  };
+  const EMU = 914400, FULL = 3.9 * EMU, HALF = 1.9 * EMU, MAXH = 3.4 * EMU;
+  const drawing = (rId, cx, cy, id) => doc.importNode(xmlDoc(
+    '<w:r xmlns:w="' + W_NS + '" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:r="' + R_NS + '">' +
+    '<w:rPr><w:noProof/></w:rPr><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="' + cx + '" cy="' + cy + '"/><wp:effectExtent l="0" t="0" r="0" b="0"/>' +
+    '<wp:docPr id="' + id + '" name="Imagen ' + id + '"/><wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>' +
+    '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="0" name="imagen' + id + '.jpg"/><pic:cNvPicPr/></pic:nvPicPr>' +
+    '<pic:blipFill><a:blip r:embed="' + rId + '"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + cx + '" cy="' + cy + '"/></a:xfrm>' +
+    '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>').documentElement, true);
+  const sp = () => { const r = doc.createElementNS(W_NS, 'w:r'); const t = doc.createElementNS(W_NS, 'w:t'); t.setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve'); t.textContent = ' '; r.appendChild(t); return r; };
+  const list = actaOrder(a);
+  for(let i = 0; i < list.length; i++){
+    const p = list[i]; const tr = tplRow.cloneNode(true); const tcs = wKids(tr, 'tc');
+    for(const d of wAll(tr, 'drawing')){ const r = d.parentNode; r.parentNode.removeChild(r); }
+    const lines = (p.text || '').split(/\n/).map(s => s.trimEnd()).filter((s, k, arr) => s || (k > 0 && k < arr.length - 1));
+    if(p.res) lines.push('RESUELTO.');
+    setCellLines(tcs[0], [pad2(i + 1)]); setCellLines(tcs[1], lines); if(tcs[2]) setCellLines(tcs[2], [p.resp || '']); if(tcs[3]) setCellLines(tcs[3], [p.plazo || '']);
+    // fotos: los recortes de plano a todo el ancho; las fotos, de dos en dos
+    let cur = null, inRow = 0;
+    for(const img of p.imgs || []){
+      const r = await addImg(img); if(!r) continue;
+      const full = !!(img.full || img.plano);
+      let cx = full ? FULL : HALF, cy = Math.round(cx * r.h / r.w); if(cy > MAXH){ cy = MAXH; cx = Math.round(cy * r.w / r.h); }
+      if(full || !cur || inRow >= 2){ cur = doc.createElementNS(W_NS, 'w:p'); tcs[1].appendChild(cur); inRow = 0; }
+      if(inRow) cur.appendChild(sp());
+      cur.appendChild(drawing(r.rId, Math.round(cx), Math.round(cy), ++docPr)); inRow = full ? 2 : inRow + 1;
+    }
+    P.puntos.appendChild(tr);
+  }
+  // Tipos de archivo de imagen declarados
+  const ct = xmlDoc(u8txt(files.get('[Content_Types].xml'))); const defs = [...ct.getElementsByTagName('Default')].map(d => (d.getAttribute('Extension') || '').toLowerCase());
+  if(!defs.includes('jpg')){ const d = ct.createElementNS(ct.documentElement.namespaceURI, 'Default'); d.setAttribute('Extension', 'jpg'); d.setAttribute('ContentType', 'image/jpeg'); ct.documentElement.insertBefore(d, ct.documentElement.firstChild); }
+  files.set('[Content_Types].xml', xmlOut(ct));
+  files.set('word/document.xml', xmlOut(doc));
+  files.set('word/_rels/document.xml.rels', xmlOut(relsDoc));
+  const names = [...files.keys()].sort((x, y) => (x === '[Content_Types].xml' ? -1 : y === '[Content_Types].xml' ? 1 : 0));
+  return zipStore(names.map(n => [n, files.get(n)]), 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+}
+/* ZIP sin compresión (suficiente para un Word: las fotos ya van en JPEG) */
+const CRC_T = (() => { const t = new Uint32Array(256); for(let n = 0; n < 256; n++){ let c = n; for(let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(u){ let c = 0xFFFFFFFF; for(let i = 0; i < u.length; i++) c = CRC_T[(c ^ u[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function zipStore(entries, type){
+  const enc = new TextEncoder(); const parts = [], cen = []; let off = 0;
+  const d = new Date(); const dt = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate(), tm = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+  for(const [name, data] of entries){
+    const nb = enc.encode(name), crc = crc32(data), L = new DataView(new ArrayBuffer(30));
+    L.setUint32(0, 0x04034b50, true); L.setUint16(4, 20, true); L.setUint16(6, 0x0800, true); L.setUint16(8, 0, true); L.setUint16(10, tm, true); L.setUint16(12, dt, true);
+    L.setUint32(14, crc, true); L.setUint32(18, data.length, true); L.setUint32(22, data.length, true); L.setUint16(26, nb.length, true); L.setUint16(28, 0, true);
+    parts.push(L.buffer, nb, data);
+    const C = new DataView(new ArrayBuffer(46));
+    C.setUint32(0, 0x02014b50, true); C.setUint16(4, 20, true); C.setUint16(6, 20, true); C.setUint16(8, 0x0800, true); C.setUint16(10, 0, true); C.setUint16(12, tm, true); C.setUint16(14, dt, true);
+    C.setUint32(16, crc, true); C.setUint32(20, data.length, true); C.setUint32(24, data.length, true); C.setUint16(28, nb.length, true); C.setUint32(42, off, true);
+    cen.push(C.buffer, nb); off += 30 + nb.length + data.length;
+  }
+  const csz = cen.reduce((s, x) => s + x.byteLength, 0), E = new DataView(new ArrayBuffer(22));
+  E.setUint32(0, 0x06054b50, true); E.setUint16(8, entries.length, true); E.setUint16(10, entries.length, true); E.setUint32(12, csz, true); E.setUint32(16, off, true);
+  return new Blob([...parts, ...cen, E.buffer], {type});
+}
+const actaOrder = a => [...(a.pts || []).filter(p => p.pend), ...(a.pts || []).filter(p => !p.pend)];
+function actaFileName(a, o){
+  const tn = (o.actaTpl && o.actaTpl.name) || '';
+  let n = tn.replace(/\.docx$/i, '');
+  if(/ACTA\s*\d+/i.test(n)){ n = n.replace(/ACTA\s*\d+/i, 'ACTA' + a.num); n = n.replace(/\d{2}[A-Z]{3}\d{4}/, fechaActa(a.fecha)); }
+  else n = 'ACTA' + a.num + '_' + (o.name || 'obra').replace(/[^\w\-]+/g, '_') + '_' + fechaActa(a.fecha);
+  return n + '.docx';
+}
+
+/* ---------- Imágenes de los puntos ---------- */
+async function imgToJpeg(blob, max = 1600){
+  let src, w, h;
+  try { src = await createImageBitmap(blob, {imageOrientation:'from-image'}); w = src.width; h = src.height; }
+  catch(e){ src = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('No se pudo leer la imagen')); im.src = URL.createObjectURL(blob); }); w = src.naturalWidth; h = src.naturalHeight; }
+  const s = Math.min(1, max / Math.max(w, h)); const c = document.createElement('canvas'); c.width = Math.round(w * s); c.height = Math.round(h * s);
+  const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(src, 0, 0, c.width, c.height);
+  return await canvasJpeg(c);
+}
+async function canvasJpeg(c, q = 0.82){
+  const b = await new Promise(res => c.toBlob(res, 'image/jpeg', q));
+  return {buf: await b.arrayBuffer(), w: c.width, h: c.height};
+}
+async function saveActaImg(rec, plano, full){ const k = 'ai_' + uid(); await DB.put('photos', k, rec); return {k, plano: !!plano, full: !!(full || plano)}; }
+const imgUrls = new Map();
+async function actaImgUrl(k){
+  if(imgUrls.has(k)) return imgUrls.get(k);
+  const rec = await DB.get('photos', k); if(!rec) return '';
+  const u = URL.createObjectURL(new Blob([rec.buf], {type:'image/jpeg'})); imgUrls.set(k, u); return u;
+}
+async function gcActaImgs(){
+  const used = new Set(); for(const a of actas) for(const p of a.pts || []) for(const i of p.imgs || []) used.add(i.k);
+  for(const o of obras) for(const p of (o.actaBase && o.actaBase.pts) || []) for(const i of p.imgs || []) used.add(i.k);
+  let keys = []; try { keys = await DB.keys('photos'); } catch(e){ return; }
+  for(const k of keys) if(/^ai_/.test(k) && !used.has(k)) await DB.del('photos', k);
+}
+
+/* ---------- Plantilla de la obra ---------- */
+async function loadActaTpl(o){
+  const pick = await sheet((sh, close) => sh.append(h('h2',{}, 'Plantilla de actas · ' + o.name),
+    h('p',{}, 'Elige el Word de la última acta de esta obra. Se usa como plantilla (cabecera, pie, letras y tablas iguales) y de ella salen el número, los asistentes y los puntos pendientes para el acta siguiente.'),
+    h('div',{class:'menu'},
+      MS_ON ? h('button',{onclick:() => close('od')}, svgIcon('i-share'), 'Desde OneDrive / SharePoint') : null,
+      h('button',{onclick:() => close('mov')}, svgIcon('i-plus'), 'Desde el móvil')),
+    acts(h('button',{class:'btn', onclick:() => close(null)}, 'Cancelar'))));
+  if(!pick) return false;
+  let f = null;
+  if(pick === 'od'){
+    if(!(await msEnsure())) return false;
+    const got = await odBrowse({title:'Última acta (Word)', filter:/\.docx$/i, multi:false, key:'acta'}); if(!got || !got[0]) return false;
+    const d = busy('Descargando…'); try { f = await odDownload(got[0], got[0].name); } catch(e){ d(); toast('Error: ' + e.message, 5000); return false; } d();
+  } else {
+    f = await new Promise(res => { const inp = h('input',{type:'file', accept:'.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document', hidden:true});
+      inp.onchange = () => { res(inp.files[0] || null); inp.remove(); }; document.body.appendChild(inp); inp.click(); });
+  }
+  if(!f) return false;
+  const d = busy('Leyendo el acta…');
+  try {
+    const bytes = await f.arrayBuffer(); const base = await parseActaDocx(bytes);
+    for(const p of base.pts){ const imgs = []; for(const im of p.imgs){ try { imgs.push(await saveActaImg(await imgToJpeg(new Blob([im.data], {type: im.type}), 2000), false, im.full)); } catch(e){} } p.imgs = imgs; p.res = false; }
+    const id = 'tpl_' + uid(); if(o.actaTpl) await DB.del('pdfs', o.actaTpl.id);
+    await DB.put('pdfs', id, bytes);
+    o.actaTpl = {id, name: f.name}; o.actaBase = base; await DB.put('notes', o.id, o);
+    d(); toast('Plantilla cargada: acta Nº' + base.num + ' con ' + base.pts.length + ' puntos y ' + base.asis.length + ' filas de asistentes', 5000);
+    return true;
+  } catch(e){ d(); console.error(e); toast(e.message || 'No se pudo leer el Word', 6000); return false; }
+}
+
+/* ---------- Lista de actas de la obra ---------- */
+function actasSheet(o){
+  if(!o){ toast('Elige primero una obra'); return; }
+  const mine = actas.filter(a => a.obra === o.id).sort((a, b) => b.num - a.num || b.created - a.created);
+  sheet((sh, close) => {
+    const list = h('div',{class:'menu'});
+    for(const a of mine) list.append(h('button',{onclick:() => { close(); openActa(a.id); }},
+      h('span',{class:'anum'}, a.num), h('span',{style:'flex:1;min-width:0'}, h('b',{}, 'Acta Nº' + a.num + ' · ' + fechaVisita(a.fecha)),
+        h('small',{style:'display:block;color:var(--muted)'}, (a.tema || '') + ' · ' + (a.pts || []).length + ' puntos' + (a.gen ? ' · Word generado' : ' · borrador')))));
+    const next = (mine[0] ? mine[0].num : (o.actaBase ? o.actaBase.num : 0)) + 1;
+    sh.append(h('h2',{}, 'Actas de obra · ' + o.name),
+      o.actaTpl ? h('p',{}, 'Plantilla: ' + o.actaTpl.name) : h('p',{}, 'Para empezar, carga el Word de la última acta de esta obra. Se usa como plantilla y de ella salen los asistentes y los puntos pendientes.'),
+      mine.length ? list : '',
+      o.actaTpl ? h('button',{class:'btn wide pri', style:'margin-top:10px', onclick:async () => { close(); const a = await newActa(o); openActa(a.id); }}, svgIcon('i-plus'), 'Nueva acta (Nº' + next + ')') : '',
+      h('button',{class:'btn wide', style:'margin-top:8px', onclick:async () => { close(); if(await loadActaTpl(o)) actasSheet(o); }}, svgIcon('i-pdf'), o.actaTpl ? 'Cambiar plantilla (Word de la última acta)' : 'Cargar el Word de la última acta'),
+      acts(h('button',{class:'btn', onclick:() => close()}, 'Cerrar')));
+  });
+}
+async function newActa(o){
+  const prev = actas.filter(a => a.obra === o.id).sort((a, b) => b.num - a.num || b.created - a.created)[0];
+  const base = prev || o.actaBase || {num:0, asis:[], pts:[]};
+  const now = new Date();
+  const a = {id:'acta_' + uid(), kind:'acta', obra:o.id, num:(base.num || 0) + 1, fecha:isoHoy(now), hora:pad2(now.getHours()) + ':' + pad2(now.getMinutes()),
+    lugar: base.lugar || '', tema: base.tema || '', asis: (base.asis || []).map(s => ({...s})),
+    pts: (prev ? actaOrder(prev) : base.pts || []).filter(p => !p.res).map(p => ({id:uid(), text:p.text || '', resp:p.resp || '', plazo:p.plazo || '', imgs:(p.imgs || []).map(i => ({...i})), pend:true, res:false})),
+    created:Date.now(), updated:Date.now()};
+  await DB.put('notes', a.id, a); actas.push(a); return a;
+}
+
+/* ---------- Pantalla del acta ---------- */
+let A = null, aSaveT = null;
+const actaSave = () => { if(!A) return; A.updated = Date.now(); clearTimeout(aSaveT); const a = A; aSaveT = setTimeout(() => DB.put('notes', a.id, a), 250); };
+function openActa(id){
+  A = actas.find(a => a.id === id); if(!A) return;
+  $('#lib').hidden = true; $('#acta').hidden = false; window.scrollTo(0, 0); renderActa();
+}
+async function closeActa(){
+  clearTimeout(aSaveT); if(A) await DB.put('notes', A.id, A);
+  A = null; $('#acta').hidden = true; $('#lib').hidden = false; refreshLib(); showRevBar();
+}
+function renderActa(){
+  const a = A; const o = obras.find(x => x.id === a.obra) || {name:''};
+  const root = $('#acta'); root.innerHTML = '';
+  const fld = (label, el) => h('label',{class:'af'}, h('span',{}, label), el);
+  const inp = (key, type = 'text', ph = '') => { const e = h('input',{class:'field', type, placeholder:ph}); e.value = a[key] || ''; e.oninput = () => { a[key] = e.value; actaSave(); if(key === 'tema') sub.textContent = o.name + (a.tema ? ' · ' + a.tema : ''); }; return e; };
+  const sub = h('small',{}, o.name + (a.tema ? ' · ' + a.tema : ''));
+  root.append(h('div',{class:'abar'},
+    h('button',{class:'ib', title:'Volver', onclick:closeActa}, svgIcon('i-back')),
+    h('div',{class:'att'}, h('b',{}, 'Acta Nº' + a.num), sub),
+    h('button',{class:'ib', title:'Más', onclick:actaMenu}, svgIcon('i-more'))));
+  const body = h('div',{class:'abody'});
+  // Datos
+  body.append(h('details',{class:'asec'}, h('summary',{}, 'Datos de la visita'),
+    h('div',{class:'agrid'}, fld('Nº', (() => { const e = h('input',{class:'field', type:'number', inputmode:'numeric'}); e.value = a.num; e.oninput = () => { a.num = +e.value || a.num; actaSave(); }; return e; })()),
+      fld('Fecha', inp('fecha', 'date')), fld('Hora', inp('hora', 'time'))),
+    fld('Lugar', inp('lugar')), fld('Tema', inp('tema'))));
+  // Asistentes
+  const asis = h('div',{class:'alist'});
+  (a.asis || []).forEach((s, i) => asis.append(h('button',{class:'arow' + (s.mark ? ' mk' : ''), onclick:() => editAsis(i)},
+    h('span',{class:'rol'}, s.rol || '—'), h('span',{class:'nom'}, s.nom || ''), h('span',{class:'emp'}, s.emp || ''))));
+  body.append(h('details',{class:'asec'}, h('summary',{}, 'Asistentes (' + (a.asis || []).length + ')'), asis,
+    h('button',{class:'linkbtn', onclick:() => editAsis(-1)}, '+ Añadir fila de asistentes')));
+  // Puntos
+  const ord = actaOrder(a); const pend = ord.filter(p => p.pend), nuevos = ord.filter(p => !p.pend);
+  const card = (p, n) => {
+    const th = h('div',{class:'athumbs'});
+    for(const im of (p.imgs || []).slice(0, 4)) actaImgUrl(im.k).then(u => { if(u) th.append(h('img',{src:u, alt:''})); });
+    return h('div',{class:'apt' + (p.res ? ' res' : ''), onclick:() => editPoint(p)},
+      h('div',{class:'aph'}, h('span',{class:'anum'}, pad2(n)), h('span',{class:'aresp'}, p.resp || 'Sin responsable'), p.plazo ? h('span',{class:'aplazo'}, p.plazo) : '',
+        p.pend ? h('button',{class:'chip' + (p.res ? ' on' : ''), onclick:e => { e.stopPropagation(); p.res = !p.res; actaSave(); renderActa(); }}, p.res ? '✓ Resuelto' : 'Resuelto') : ''),
+      h('div',{class:'atx'}, p.text || h('i',{style:'color:var(--muted)'}, 'Sin texto')), (p.imgs || []).length ? th : '');
+  };
+  let n = 0;
+  if(pend.length) body.append(h('h3',{class:'ah'}, 'Pendientes del acta anterior (' + pend.length + ')'), ...pend.map(p => card(p, ++n)));
+  body.append(h('h3',{class:'ah'}, 'Puntos nuevos (' + nuevos.length + ')'), ...nuevos.map(p => card(p, ++n)),
+    nuevos.length ? '' : h('p',{style:'color:var(--muted);font-size:13px;margin:4px 2px'}, 'Pulsa «Nuevo punto» para añadir lo que se trate en la visita.'));
+  root.append(body, h('div',{class:'afoot'},
+    h('button',{class:'btn', onclick:exportActa}, svgIcon('i-share'), 'Generar Word'),
+    h('button',{class:'btn pri', onclick:() => { const p = {id:uid(), text:'', resp:'', plazo:'', imgs:[], pend:false, res:false}; editPoint(p, true); }}, svgIcon('i-plus'), 'Nuevo punto')));
+}
+function actaMenu(){
+  const a = A;
+  sheet((sh, close) => sh.append(h('h2',{}, 'Acta Nº' + a.num), h('div',{class:'menu'},
+    h('button',{onclick:() => { close(); exportActa(); }}, svgIcon('i-share'), 'Generar Word'),
+    h('button',{onclick:async () => { close(); if(await confirmSheet('Eliminar acta', 'Se borra el acta Nº' + a.num + ' de este móvil. Los Word ya generados no se tocan.', 'Eliminar')){ actas = actas.filter(x => x !== a); await DB.del('notes', a.id); A = null; await closeActa(); gcActaImgs(); } }}, svgIcon('i-trash'), 'Eliminar acta')),
+    acts(h('button',{class:'btn', onclick:() => close()}, 'Cerrar'))));
+}
+function empresas(){
+  const s = new Set(); for(const x of A.asis || []) for(const e of (x.emp || '').split(/[\/,]/)) if(e.trim()) s.add(e.trim().toUpperCase());
+  for(const p of A.pts || []) if(p.resp) s.add(p.resp.trim().toUpperCase());
+  s.add('TODOS'); return [...s];
+}
+function editAsis(i){
+  const a = A; const s = i >= 0 ? {...a.asis[i]} : {rol:'', nom:'', emp:'', mark:false};
+  sheet((sh, close) => {
+    const f = (label, k, ml) => { const e = h(ml ? 'textarea' : 'input',{class:'field' + (ml ? ' ta' : '')}); e.value = s[k] || ''; e.oninput = () => s[k] = e.value; return h('label',{class:'af'}, h('span',{}, label), e); };
+    const mk = h('button',{class:'chip' + (s.mark ? ' on' : ''), onclick:() => { s.mark = !s.mark; mk.classList.toggle('on', s.mark); }}, 'Resaltado amarillo');
+    sh.append(h('h2',{}, i >= 0 ? 'Asistentes' : 'Nueva fila de asistentes'), f('Rol', 'rol'), f('Nombres (separados por /)', 'nom', true), f('Empresa', 'emp'), h('div',{style:'margin-top:8px'}, mk),
+      acts(i >= 0 ? h('button',{class:'btn danger', onclick:() => { a.asis.splice(i, 1); actaSave(); close(); renderActa(); }}, 'Quitar') : '',
+        h('button',{class:'btn', onclick:() => close()}, 'Cancelar'),
+        h('button',{class:'btn pri', onclick:() => { if(i >= 0) a.asis[i] = s; else (a.asis = a.asis || []).push(s); actaSave(); close(); renderActa(); }}, 'Guardar')));
+  });
+}
+function editPoint(p, isNew){
+  const a = A; const d = {text:p.text, resp:p.resp, plazo:p.plazo, imgs:[...(p.imgs || [])], res:p.res};
+  sheet((sh, close) => {
+    const ta = h('textarea',{class:'field ta', rows:6, placeholder:'Escribe o dicta con el micrófono del teclado…'}); ta.value = d.text; ta.oninput = () => d.text = ta.value;
+    const dl = h('datalist',{id:'empList'}, ...empresas().map(e => h('option',{value:e})));
+    const resp = h('input',{class:'field', list:'empList', placeholder:'Empresa responsable'}); resp.value = d.resp; resp.oninput = () => d.resp = resp.value;
+    const pl = h('input',{class:'field', placeholder:'Plazo o fecha (opcional)'}); pl.value = d.plazo; pl.oninput = () => d.plazo = pl.value;
+    const strip = h('div',{class:'astrip'});
+    const drawStrip = () => { strip.innerHTML = ''; d.imgs.forEach((im, k) => { const t = h('button',{class:'ath' + (im.plano ? ' pl' : ''), title:'Quitar', onclick:async () => { if(await confirmSheetInline('¿Quitar esta imagen del punto?')){ d.imgs.splice(k, 1); drawStrip(); } }}); actaImgUrl(im.k).then(u => { if(u) t.style.backgroundImage = 'url(' + u + ')'; }); strip.append(t); }); };
+    drawStrip();
+    const addFiles = async (files) => { const b = busy('Preparando fotos…'); for(const f of files){ try { d.imgs.push(await saveActaImg(await imgToJpeg(f))); } catch(e){ toast(e.message); } } b(); drawStrip(); };
+    const fileBtn = (label, icon, attrs) => h('button',{class:'btn', onclick:() => { const inp = h('input',{type:'file', accept:'image/*', hidden:true, ...attrs}); inp.onchange = () => { addFiles([...inp.files]); inp.remove(); }; document.body.appendChild(inp); inp.click(); }}, svgIcon(icon), label);
+    const resB = p.pend ? h('div',{class:'chips', style:'margin:8px 0'},
+      chipBtn('Sigue pendiente', !d.res, () => { d.res = false; resB.querySelectorAll('.chip').forEach((c, k) => c.classList.toggle('on', k === 0)); }),
+      chipBtn('Resuelto', d.res, () => { d.res = true; resB.querySelectorAll('.chip').forEach((c, k) => c.classList.toggle('on', k === 1)); })) : '';
+    sh.append(h('h2',{}, isNew ? 'Nuevo punto' : (p.pend ? 'Punto pendiente' : 'Punto')), ta, dl,
+      h('div',{class:'agrid2'}, resp, pl), resB,
+      h('div',{class:'abtns'}, fileBtn('Cámara', 'i-cam', {capture:'environment'}), fileBtn('Galería', 'i-plus', {multiple:true}),
+        h('button',{class:'btn', onclick:async () => { const im = await pinOnPlan(a, pad2(actaOrder(a).indexOf(p) >= 0 ? actaOrder(a).indexOf(p) + 1 : actaOrder(a).length + 1)); if(im){ d.imgs.push(im); drawStrip(); } }}, svgIcon('i-scale'), 'En el plano')),
+      strip,
+      acts(!isNew ? h('button',{class:'btn danger', onclick:async () => { close(); if(await confirmSheet('Eliminar punto', 'Se quita este punto del acta.', 'Eliminar')){ a.pts = a.pts.filter(x => x !== p); actaSave(); renderActa(); } }}, 'Eliminar') : '',
+        h('button',{class:'btn', onclick:() => close()}, 'Cancelar'),
+        h('button',{class:'btn pri', onclick:() => { Object.assign(p, d); if(isNew){ if(!d.text.trim() && !d.imgs.length){ close(); return; } a.pts.push(p); } actaSave(); close(); renderActa(); }}, 'Guardar')));
+    if(isNew) setTimeout(() => ta.focus(), 250);
+  });
+}
+// confirmación sin cerrar la ventana de debajo
+function confirmSheetInline(msg){ return new Promise(res => { const b = h('div',{class:'aconf'}, h('span',{}, msg),
+  h('button',{class:'btn', onclick:() => { b.remove(); res(false); }}, 'No'), h('button',{class:'btn danger', onclick:() => { b.remove(); res(true); }}, 'Quitar')); document.body.appendChild(b); }); }
+
+/* ---------- Chincheta en el plano: recorte con el punto marcado ---------- */
+async function pinOnPlan(a, label){
+  const plans = notes.filter(n => n.kind === 'pdf' && n.obra === a.obra && !n.superseded).sort((x, y) => natural(x.title, y.title));
+  if(!plans.length){ toast('Esta obra no tiene planos importados', 3500); return null; }
+  const n = await sheet((sh, close) => {
+    const q = h('input',{class:'field', placeholder:'Buscar plano…', type:'search'}); const list = h('div',{class:'menu', style:'max-height:52vh;overflow:auto'});
+    const draw = () => { list.innerHTML = ''; const s = normTxt(q.value); for(const x of plans.filter(x => !s || normTxt(x.title).includes(s)).slice(0, 80)) list.append(h('button',{onclick:() => close(x)}, h('span',{style:'overflow-wrap:anywhere'}, x.title + (x.archived ? ' (archivado)' : '')))); };
+    q.oninput = draw; draw(); sh.append(h('h2',{}, '¿En qué plano?'), q, list, acts(h('button',{class:'btn', onclick:() => close(null)}, 'Cancelar')));
+  });
+  if(!n) return null;
+  const bytes = await DB.get('pdfs', n.id); if(!bytes){ toast('Ese plano está archivado: recupéralo primero', 4000); return null; }
+  const b = busy('Abriendo plano…'); let doc, page;
+  try { await initPdf(); doc = await loadPdf(bytes.slice ? bytes.slice(0) : bytes); } catch(e){ b(); toast('No se pudo abrir el plano'); return null; }
+  b();
+  let pi = 1;
+  if(doc.numPages > 1){ pi = await sheet((sh, close) => sh.append(h('h2',{}, 'Página'), h('div',{class:'chips'}, ...Array.from({length: Math.min(doc.numPages, 30)}, (_, k) => chipBtn(String(k + 1), false, () => close(k + 1)))), acts(h('button',{class:'btn', onclick:() => close(null)}, 'Cancelar')))); if(!pi) return null; }
+  const b2 = busy('Preparando plano…');
+  page = await doc.getPage(pi); const vp1 = page.getViewport({scale:1});
+  const W = Math.min(3200, Math.max(1600, Math.round(vp1.width * 3))); const vp = page.getViewport({scale: W / vp1.width});
+  const cv = document.createElement('canvas'); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+  const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+  try { await page.render({canvasContext:cx, viewport:vp}).promise; } catch(e){ b2(); toast('No se pudo dibujar el plano'); return null; }
+  b2();
+  return await new Promise(resolve => {
+    let pin = null, zoom = 1;
+    const img = h('img',{src: cv.toDataURL('image/jpeg', 0.85), alt:'', draggable:'false'});
+    const mark = h('div',{class:'pinmk', hidden:true}, label);
+    const wrap = h('div',{class:'pinw'}, img, mark);
+    const scroller = h('div',{class:'pins'}, wrap);
+    const setZoom = z => { const sx = (scroller.scrollLeft + scroller.clientWidth / 2) / wrap.offsetWidth, sy = (scroller.scrollTop + scroller.clientHeight / 2) / wrap.offsetHeight;
+      zoom = Math.max(1, Math.min(6, z)); wrap.style.width = (zoom * 100) + '%'; requestAnimationFrame(() => { scroller.scrollLeft = sx * wrap.offsetWidth - scroller.clientWidth / 2; scroller.scrollTop = sy * wrap.offsetHeight - scroller.clientHeight / 2; }); };
+    img.addEventListener('click', e => { const r = img.getBoundingClientRect(); pin = {x:(e.clientX - r.left) / r.width, y:(e.clientY - r.top) / r.height};
+      mark.hidden = false; mark.style.left = (pin.x * 100) + '%'; mark.style.top = (pin.y * 100) + '%'; ok.disabled = false; });
+    const end = v => { ov.remove(); resolve(v); };
+    const ok = h('button',{class:'btn pri', disabled:true, onclick:async () => {
+      const cw = Math.round(Math.min(cv.width, Math.max(900, cv.width * 0.34))), ch = Math.round(Math.min(cv.height, cw * 0.68));
+      let x0 = Math.round(pin.x * cv.width - cw / 2), y0 = Math.round(pin.y * cv.height - ch / 2);
+      x0 = Math.max(0, Math.min(cv.width - cw, x0)); y0 = Math.max(0, Math.min(cv.height - ch, y0));
+      const c2 = document.createElement('canvas'); c2.width = cw; c2.height = ch; const x = c2.getContext('2d');
+      x.drawImage(cv, x0, y0, cw, ch, 0, 0, cw, ch);
+      const px = pin.x * cv.width - x0, py = pin.y * cv.height - y0, r = Math.max(18, cw * 0.028);
+      x.lineWidth = r * 0.22; x.strokeStyle = '#e03131'; x.beginPath(); x.arc(px, py, r * 2.1, 0, Math.PI * 2); x.stroke();
+      x.fillStyle = '#e03131'; x.beginPath(); x.arc(px, py, r, 0, Math.PI * 2); x.fill();
+      x.fillStyle = '#fff'; x.font = 'bold ' + Math.round(r * 1.05) + 'px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(label, px, py + 1);
+      x.font = Math.round(r * 0.75) + 'px sans-serif'; x.textAlign = 'left'; x.textBaseline = 'bottom'; x.fillStyle = 'rgba(255,255,255,.85)';
+      const cap = n.title + (doc.numPages > 1 ? ' · pág. ' + pi : ''); const tw = x.measureText(cap).width; x.fillRect(6, ch - r * 1.15, tw + 12, r * 1.1); x.fillStyle = '#333'; x.fillText(cap, 12, ch - r * 0.22);
+      end(await saveActaImg(await canvasJpeg(c2, 0.85), true)); }}, 'Usar este punto');
+    const ov = h('div',{id:'pinv'},
+      h('div',{class:'pinh'}, h('button',{class:'btn', onclick:() => end(null)}, 'Cancelar'), h('b',{}, 'Toca donde va el punto ' + label), h('button',{class:'btn', onclick:() => setZoom(zoom / 1.6)}, '−'), h('button',{class:'btn', onclick:() => setZoom(zoom * 1.6)}, '+')),
+      scroller, h('div',{class:'pinf'}, h('small',{}, n.title), ok));
+    document.body.appendChild(ov); setZoom(2);
+  });
+}
+
+/* ---------- Generar y compartir el Word ---------- */
+async function exportActa(){
+  const a = A; const o = obras.find(x => x.id === a.obra);
+  if(!o || !o.actaTpl){ toast('Falta la plantilla de la obra'); return; }
+  clearTimeout(aSaveT); await DB.put('notes', a.id, a);
+  const b = busy('Generando el Word…'); let blob;
+  try { const tpl = await DB.get('pdfs', o.actaTpl.id); if(!tpl) throw new Error('Falta la plantilla; vuelve a cargarla'); blob = await buildActaDocx(a, tpl); }
+  catch(e){ b(); console.error(e); toast('No se pudo generar: ' + (e.message || e), 6000); return; }
+  b(); a.gen = Date.now(); actaSave();
+  const name = actaFileName(a, o); const file = new File([blob], name, {type: blob.type});
+  sheet((sh, close) => {
+    const dl = h('a',{class:'btn wide', href: URL.createObjectURL(blob), download: name, onclick:() => setTimeout(close, 300)}, svgIcon('i-pdf'), 'Guardar en el móvil');
+    const canShare = navigator.canShare && navigator.canShare({files:[file]});
+    sh.append(h('h2',{}, 'Acta Nº' + a.num + ' lista'), h('p',{style:'overflow-wrap:anywhere'}, name + ' · ' + actaOrder(a).length + ' puntos'),
+      canShare ? h('button',{class:'btn wide pri', onclick:async () => { try { await navigator.share({files:[file], title:name}); close(); } catch(e){} }}, svgIcon('i-share'), 'Compartir (correo, OneDrive, WhatsApp…)') : '',
+      h('div',{style:'margin-top:8px'}, dl), acts(h('button',{class:'btn', onclick:() => close()}, 'Cerrar')));
+  });
+}
+
 (async () => { await DB.open(); if(MS_ON) await msHandleRedirect(); refreshLib(); initPdf().catch(()=>{}); })();
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 /* Actualizaciones sin tener que cerrar la app */
-const APP_V = '2026.11.11-22';
+const APP_V = '2026.11.11-23';
 async function checkUpdate(manual){
   try {
     const r = await fetch('index.html?v=' + Date.now(), {cache:'no-store'}); if(!r.ok) throw 0;
