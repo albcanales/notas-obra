@@ -172,6 +172,24 @@ body.selmode #lib{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
 #selBar .btn:disabled{opacity:.4}
 #updBar{position:fixed;left:12px;right:12px;top:calc(10px + env(safe-area-inset-top));z-index:50;background:#1c1f26;color:#fff;border-radius:14px;padding:10px 10px 10px 16px;display:flex;align-items:center;gap:10px;box-shadow:0 6px 20px rgba(0,0,0,.35);font-weight:600;font-size:14px}
 #updBar span{flex:1}
+#odb{position:fixed;inset:0;z-index:28;background:var(--bg);display:flex;flex-direction:column;padding:calc(8px + env(safe-area-inset-top)) 12px calc(10px + env(safe-area-inset-bottom))}
+#odb .odh{display:flex;align-items:center;gap:8px}
+#odb .odh b{flex:1;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#odb .odh .btn{min-width:44px;justify-content:center;font-size:18px}
+#odb .odcr{font-size:12.5px;color:var(--muted);margin:6px 2px;overflow-x:auto;white-space:nowrap}
+#odb .ods{margin-bottom:6px}
+#odb .ods .field{width:100%}
+#odb .odl{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;border-radius:12px;background:var(--surface)}
+#odb .odi{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:11px 12px;border:0;border-bottom:1px solid var(--line);background:none;color:var(--ink);font-size:14.5px}
+#odb .odi .ic{width:24px;text-align:center;font-size:18px}
+#odb .odi .nm{flex:1;min-width:0;overflow-wrap:anywhere}
+#odb .odi small{display:block;color:var(--muted);font-size:11.5px}
+#odb .odi.on{background:color-mix(in srgb, var(--accent) 18%, transparent)}
+#odb .odi.on .ic::after{content:' ✓';color:var(--accent);font-weight:800}
+#odb .odi.dim{opacity:.45}
+#odb .odsub{color:var(--muted);font-size:12.5px;padding:12px 12px 4px;margin:0}
+#odb .odf{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+#odb .odf .btn{flex:1;justify-content:center;white-space:nowrap}
 #toast{position:fixed;left:50%;bottom:calc(80px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#1c1f26;color:#fff;padding:10px 14px;border-radius:12px;font-size:14px;z-index:40;max-width:calc(100% - 32px);box-shadow:0 6px 20px rgba(0,0,0,.3)}
 .busy{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:rgba(0,0,0,.25);color:#fff;font-weight:600}
 .busy div{background:#1c1f26;padding:14px 18px;border-radius:14px}
@@ -352,9 +370,9 @@ function askText(title, value='', {label='Guardar', multiline=false, hint=''}={}
       acts(h('button',{class:'btn', onclick:()=>close(null)},'Cancelar'), h('button',{class:'btn pri', onclick:()=>close(inp.value)}, label)));
   });
 }
-function confirmSheet(title, msg, label='Eliminar'){
+function confirmSheet(title, msg, label='Eliminar', cls='danger'){
   return sheet((sh, close) => sh.append(h('h2',{},title), h('p',{},msg),
-    acts(h('button',{class:'btn', onclick:()=>close(false)},'Cancelar'), h('button',{class:'btn danger', onclick:()=>close(true)}, label))));
+    acts(h('button',{class:'btn', onclick:()=>close(false)},'Cancelar'), h('button',{class:'btn ' + cls, onclick:()=>close(true)}, label))));
 }
 
 /* ---------- PDF.js ---------- */
@@ -464,7 +482,7 @@ async function recoverMany(list){
   for(let i = 0; i < list.length; i++){
     b(); const done = busy('Recuperando ' + (i+1) + ' de ' + list.length + '…');
     const fh = await getHandle(list[i].id);
-    try { if(!fh) throw 0; const f = await fileFromHandle(fh); f.__fh = fh; await restoreFrom(list[i], f); ok++; } catch(e){ miss++; }
+    try { let f; if(list[i].od && MS_ON && msUser()) f = await odDownload(list[i].od, list[i].title + '.pdf'); else { if(!fh) throw 0; f = await fileFromHandle(fh); f.__fh = fh; } await restoreFrom(list[i], f); ok++; } catch(e){ miss++; }
     done();
   }
   selMode = false; sel.clear(); document.body.classList.remove('selmode');
@@ -696,6 +714,7 @@ async function importOne(f, obra, relPath){
   await DB.put('ann', id, {id, pages: pages.map(() => ({strokes:[], texts:[], measures:[], photos:[], scale:null}))});
   await DB.put('notes', id, meta);
   await saveHandle(id, f);
+  if(f.__od){ meta.od = f.__od; await DB.put('notes', id, meta); }
   notes.push(meta);
   return meta;
 }
@@ -709,7 +728,7 @@ function chooseObra(n){
   });
 }
 let pendingFiles = [], zipReaders = [];
-async function materialize(it){ if(!it.lazy) return it; const blob = await it.entry.getData(new zip.BlobWriter('application/pdf')); return new File([blob], it.name, {type:'application/pdf'}); }
+async function materialize(it){ if(!it.lazy) return it; if(it.od) return await odDownload(it.od, it.name); const blob = await it.entry.getData(new zip.BlobWriter('application/pdf')); return new File([blob], it.name, {type:'application/pdf'}); }
 async function startImport(files, obra){
   files = [...files];
   const b = document.createElement('div'); b.className = 'busy'; b.innerHTML = '<div></div>'; document.body.appendChild(b);
@@ -767,7 +786,7 @@ async function restoreFrom(n, file){
   const bytes = await file.arrayBuffer();
   const doc = await loadPdf(bytes); const np = doc.numPages; doc.destroy();
   await DB.put('pdfs', n.id, bytes);
-  n.archived = false; n.size = bytes.byteLength; n.updated = Date.now();
+  n.archived = false; n.size = bytes.byteLength; n.updated = Date.now(); if(file.__od) n.od = file.__od;
   await DB.put('notes', n.id, n); await saveHandle(n.id, file);
   return np === n.pages.length;
 }
@@ -799,6 +818,11 @@ async function restoreWith(n, f, quiet){
   catch(e){ done(); toast('No se pudo abrir ese PDF'); return false; }
 }
 async function restoreSheet(n){
+  if(n.od && MS_ON && msUser()){
+    const done = busy('Descargando de OneDrive…');
+    try { const f = await odDownload(n.od, n.title + '.pdf'); done(); if(await restoreWith(n, f, true)){ await refreshLib(); openNote(n.id); return; } }
+    catch(e){ done(); console.warn(e); if(e.message === 'login'){ if(await msEnsure()) return restoreSheet(n); return; } toast('No está en OneDrive donde estaba (' + e.message.slice(0, 80) + '). Elígelo otra vez.', 5000); }
+  }
   // Si se sabe dónde estaba el PDF, se recupera directamente sin preguntar
   const fh = await getHandle(n.id);
   let why = '';
@@ -811,6 +835,11 @@ async function restoreSheet(n){
     sh.append(h('h2',{}, 'Plano archivado'),
       h('p',{}, (why ? why + ' ' : '') + '«' + n.title + '» está archivado para ahorrar espacio. Tus notas, medidas y fotos siguen guardadas. Elige otra vez el PDF (de la nube o del móvil) y se recupera todo. Mientras no cierres la app, los que recuperes así se vuelven a abrir sin buscarlos.'),
       acts(h('button',{class:'btn', onclick:() => close()}, 'Cancelar'),
+        MS_ON ? h('button',{class:'btn', onclick:async () => { close();
+          if(n.od && !msUser()){ if(await msEnsure()) restoreSheet(n); return; }
+          if(!(await msEnsure())) return; const got = await odBrowse({title:'Buscar «' + n.title + '»', filter:/\.pdf$/i, multi:false, key:'pdf'}); if(!got || !got[0]) return;
+          const done = busy('Descargando…'); let f; try { f = await odDownload(got[0], got[0].name); } catch(e){ done(); toast('Error: ' + e.message); return; } done();
+          if(await restoreWith(n, f, false)){ await refreshLib(); openNote(n.id); } }}, 'OneDrive') : '',
         h('button',{class:'btn pri', onclick:async () => { close(); const f = await pickOnePdf(n); if(!f) return; if(await restoreWith(n, f, false)){ await refreshLib(); openNote(n.id); } }}, 'Elegir el PDF')));
   });
 }
@@ -843,9 +872,199 @@ async function spaceSheet(){
 $('#bSpace').onclick = spaceSheet;
 async function updSpaceBtn(){ try { const e = await navigator.storage.estimate(); $('#bSpace').textContent = 'Espacio ocupado: ' + fmtMB(e.usage) + ' · Liberar espacio'; } catch(err){ $('#bSpace').textContent = 'Liberar espacio'; } }
 $('#q').addEventListener('input', renderLib);
+/* ---------- OneDrive / SharePoint de Cotecno (Microsoft Graph) ---------- */
+const MS = {tenant:'6d0155e0-e82a-4d66-86da-44a5ffa7d557', client:'9f341eb4-8f57-41c1-93c5-8b608f2d366c',
+  scope:'openid profile offline_access User.Read Files.Read.All Sites.Read.All', key:'notasObra.ms'};
+const MS_ON = /(^|\.)albcanales\.github\.io$/.test(location.hostname) || /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+const MS_REDIRECT = () => new URL('./', location.href).href;
+const msAuthUrl = p => 'https://login.microsoftonline.com/' + MS.tenant + '/oauth2/v2.0/' + p;
+function msLoad(){ try { return JSON.parse(localStorage.getItem(MS.key) || 'null'); } catch(e){ return null; } }
+function msSave(t){ try { t ? localStorage.setItem(MS.key, JSON.stringify(t)) : localStorage.removeItem(MS.key); } catch(e){} }
+const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+function msUser(){ const t = msLoad(); return t && t.rtExp > Date.now() ? t.user : null; }
+async function msLogin(){
+  const ver = b64u(crypto.getRandomValues(new Uint8Array(48)));
+  const chal = b64u(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ver)));
+  const state = b64u(crypto.getRandomValues(new Uint8Array(16)));
+  try { localStorage.setItem(MS.key + '.pkce', JSON.stringify({ver, state, t: Date.now()})); } catch(e){}
+  const old = msLoad();
+  const q = new URLSearchParams({client_id: MS.client, response_type:'code', redirect_uri: MS_REDIRECT(), response_mode:'query', scope: MS.scope, code_challenge: chal, code_challenge_method:'S256', state});
+  if(old && old.user) q.set('login_hint', old.user);
+  location.href = msAuthUrl('authorize') + '?' + q;
+}
+async function msToken(body){
+  const r = await fetch(msAuthUrl('token'), {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: new URLSearchParams({client_id: MS.client, scope: MS.scope, ...body})});
+  const j = await r.json(); if(!r.ok) throw new Error(j.error_description || j.error || 'Error al entrar');
+  let user = (msLoad() || {}).user || '';
+  if(j.id_token) try { const p = JSON.parse(atob(j.id_token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))); user = p.preferred_username || p.upn || p.name || user; } catch(e){}
+  const old = msLoad();
+  const t = {at: j.access_token, exp: Date.now() + (j.expires_in - 120) * 1000, rt: j.refresh_token || (old && old.rt), rtExp: body.grant_type === 'authorization_code' || !old ? Date.now() + 23.5 * 3600e3 : old.rtExp, user};
+  msSave(t); return t;
+}
+// Vuelta del inicio de sesión: ?code=…&state=…
+async function msHandleRedirect(){
+  const u = new URL(location.href); const code = u.searchParams.get('code'), err = u.searchParams.get('error');
+  if(!code && !err) return false;
+  history.replaceState(null, '', MS_REDIRECT());
+  if(err){ toast('No se pudo entrar: ' + (u.searchParams.get('error_description') || err).slice(0, 140), 6000); return true; }
+  let pk = null; try { pk = JSON.parse(localStorage.getItem(MS.key + '.pkce') || 'null'); localStorage.removeItem(MS.key + '.pkce'); } catch(e){}
+  if(!pk || pk.state !== u.searchParams.get('state')){ toast('Inicio de sesión caducado; vuelve a intentarlo'); return true; }
+  try { const t = await msToken({grant_type:'authorization_code', code, redirect_uri: MS_REDIRECT(), code_verifier: pk.ver}); toast('Conectado a OneDrive como ' + t.user, 3500); }
+  catch(e){ toast(e.message, 6000); }
+  return true;
+}
+async function msAccess(){
+  let t = msLoad(); if(!t) throw new Error('login');
+  if(t.exp > Date.now()) return t.at;
+  if(!t.rt || t.rtExp < Date.now()) throw new Error('login');
+  try { t = await msToken({grant_type:'refresh_token', refresh_token: t.rt}); return t.at; }
+  catch(e){ throw new Error('login'); }
+}
+async function graph(path, opt = {}){
+  const url = /^https:/.test(path) ? path : 'https://graph.microsoft.com/v1.0' + path;
+  for(let k = 0; k < 2; k++){
+    const at = await msAccess();
+    const r = await fetch(url, {headers:{Authorization:'Bearer ' + at}});
+    if(r.status === 401 && k === 0){ const t = msLoad(); if(t){ t.exp = 0; msSave(t); } continue; }
+    if(!r.ok){ let m = r.status + ''; try { const j = await r.json(); m = (j.error && j.error.message) || m; } catch(e){} throw new Error(m); }
+    return opt.raw ? r : r.json();
+  }
+}
+// Pide entrar si hace falta. Devuelve true si ya hay sesión.
+async function msEnsure(){
+  if(msUser()) { try { await msAccess(); return true; } catch(e){} }
+  const go = await confirmSheet('Entrar con Microsoft', 'Para abrir los planos directamente de OneDrive y SharePoint de Cotecno, entra con tu cuenta de la empresa. Dura un día; después te lo vuelve a pedir.', 'Entrar', 'pri');
+  if(go) msLogin(); return false;
+}
+async function odDownload(od, name){
+  const it = await graph('/drives/' + od.d + '/items/' + od.i);
+  const url = it['@microsoft.graph.downloadUrl']; if(!url) throw new Error('Sin enlace de descarga');
+  const r = await fetch(url); if(!r.ok) throw new Error('Descarga fallida (' + r.status + ')');
+  const blob = await r.blob(); const f = new File([blob], name || it.name, {type: /\.pdf$/i.test(name || it.name) ? 'application/pdf' : 'application/octet-stream'});
+  f.__od = {d: od.d, i: od.i}; return f;
+}
+/* Explorador de OneDrive/SharePoint dentro de la app */
+const odMap = it => { const r = it.remoteItem; const d = r ? r.parentReference && r.parentReference.driveId : it.parentReference && it.parentReference.driveId;
+  return {name: it.name || (r && r.name), d, i: r ? r.id : it.id, folder: !!(it.folder || (r && r.folder)), size: it.size || (r && r.size) || 0, path: it.parentReference && it.parentReference.path ? decodeURIComponent(it.parentReference.path.replace(/^.*?root:/, '')) : ''}; };
+function odBrowse({title, filter, multi, key}){
+  return new Promise(resolve => {
+    const pk = 'od.' + (curObra || '-'); // la última carpeta se recuerda por obra
+    let stack; try { stack = (prefs.odLast && prefs.odLast[pk]) || null; } catch(e){}
+    if(!Array.isArray(stack) || !stack.length) stack = [{k:'home', name:'Inicio'}];
+    const sel = new Map();
+    const ov = h('div',{id:'odb'});
+    const crumbs = h('div',{class:'odcr'}), list = h('div',{class:'odl'}), foot = h('div',{class:'odf'});
+    const q = h('input',{class:'field', placeholder:'Buscar en esta biblioteca…', enterkeyhint:'search'});
+    const bUp = h('button',{class:'btn', onclick:() => { if(stack.length > 1){ stack.pop(); render(); } }}, '‹');
+    const bOk = h('button',{class:'btn pri', onclick:() => finish([...sel.values()])}, 'Importar');
+    const bAll = h('button',{class:'btn', style:'display:none'}, 'Todos');
+    const bTree = h('button',{class:'btn', style:'display:none'}, 'Esta carpeta y subcarpetas');
+    ov.append(h('div',{class:'odh'}, bUp, h('b',{}, title || 'OneDrive / SharePoint'), h('button',{class:'btn', onclick:() => finish(null)}, '✕')), crumbs, h('div',{class:'ods'}, q), list, foot);
+    foot.append(bAll, bTree, bOk);
+    document.body.appendChild(ov);
+    let items = [], next = null, cur = null;
+    const finish = v => { ov.remove(); try { prefs.odLast = prefs.odLast || {}; prefs.odLast[pk] = stack.filter(s => s.k !== 'search'); savePrefs(); } catch(e){} resolve(v); };
+    const updFoot = () => { bOk.textContent = multi ? 'Importar ' + sel.size : 'Elegir'; bOk.disabled = !sel.size;
+      const files = items.filter(x => !x.folder && filter.test(x.name)); bAll.style.display = multi && files.length ? '' : 'none';
+      bAll.textContent = files.every(x => sel.has(x.i)) ? 'Quitar todos' : 'Todos (' + files.length + ')';
+      bAll.onclick = () => { const on = files.every(x => sel.has(x.i)); files.forEach(x => on ? sel.delete(x.i) : sel.set(x.i, x)); draw(); };
+      bTree.style.display = multi && cur && cur.k === 'folder' ? '' : 'none'; };
+    const row = x => {
+      const ok = !x.folder && filter.test(x.name);
+      const r = h('button',{class:'odi' + (sel.has(x.i) ? ' on' : '') + (!x.folder && !ok ? ' dim' : '')},
+        h('span',{class:'ic'}, x.folder ? '📁' : ok ? '📄' : '·'), h('span',{class:'nm'}, x.name, x.path && cur && cur.k === 'search' ? h('small',{}, x.path) : ''), !x.folder && x.size ? h('small',{}, fmtMB(x.size)) : '');
+      r.onclick = () => {
+        if(x.folder){ stack.push({k:'folder', d:x.d, i:x.i, name:x.name}); render(); return; }
+        if(!ok) return;
+        if(!multi){ finish([x]); return; }
+        sel.has(x.i) ? sel.delete(x.i) : sel.set(x.i, x); r.classList.toggle('on', sel.has(x.i)); updFoot();
+      };
+      return r;
+    };
+    const draw = () => { list.innerHTML = ''; items.forEach(x => list.append(row(x)));
+      if(next) list.append(h('button',{class:'btn wide', onclick:async () => { const j = await graph(next); next = j['@odata.nextLink'] || null; items = items.concat(j.value.map(odMap)); draw(); }}, 'Cargar más'));
+      if(!items.length) list.append(h('p',{style:'color:var(--muted);padding:16px'}, 'Vacío')); updFoot(); };
+    async function render(){
+      cur = stack[stack.length - 1]; bUp.disabled = stack.length < 2;
+      crumbs.textContent = stack.map(s => s.name).join(' › ');
+      q.parentElement.style.display = cur.k === 'folder' || cur.k === 'search' ? '' : 'none';
+      list.innerHTML = '<p style="padding:16px;color:var(--muted)">Cargando…</p>'; next = null;
+      try {
+        if(cur.k === 'home'){
+          items = [];
+          list.innerHTML = '';
+          const recent = (prefs.odRecent || []);
+          list.append(h('button',{class:'odi', onclick:() => { stack.push({k:'me', name:'Mi OneDrive'}); render(); }}, h('span',{class:'ic'}, '☁️'), h('span',{class:'nm'}, 'Mi OneDrive')),
+            h('button',{class:'odi', onclick:() => { stack.push({k:'sites', name:'Bibliotecas'}); render(); }}, h('span',{class:'ic'}, '🏢'), h('span',{class:'nm'}, 'Bibliotecas de SharePoint (carpetas de obra)')),
+            h('button',{class:'odi', onclick:() => { stack.push({k:'shared', name:'Compartido conmigo'}); render(); }}, h('span',{class:'ic'}, '👥'), h('span',{class:'nm'}, 'Compartido conmigo')));
+          if(recent.length){ list.append(h('p',{class:'odsub'}, 'Carpetas recientes'));
+            recent.forEach(r => list.append(h('button',{class:'odi', onclick:() => { stack = [stack[0]].concat(r.stack); render(); }}, h('span',{class:'ic'}, '📁'), h('span',{class:'nm'}, r.stack[r.stack.length-1].name, h('small',{}, r.stack.map(s => s.name).join(' › ')))))); }
+          list.append(h('p',{class:'odsub'}, 'Conectado como ' + (msUser() || '') + ' · ', h('a',{href:'#', onclick:e => { e.preventDefault(); msSave(null); finish(null); toast('Sesión de Microsoft cerrada'); }}, 'cerrar sesión')));
+          updFoot(); return;
+        }
+        let j;
+        if(cur.k === 'me') j = await graph('/me/drive/root/children?$top=500');
+        else if(cur.k === 'shared') j = await graph('/me/drive/sharedWithMe?$top=200');
+        else if(cur.k === 'folder') j = await graph('/drives/' + cur.d + '/items/' + cur.i + '/children?$top=500');
+        else if(cur.k === 'drive') j = await graph('/drives/' + cur.d + '/root/children?$top=500');
+        else if(cur.k === 'search') j = await graph('/drives/' + cur.d + "/root/search(q='" + encodeURIComponent(cur.q.replace(/'/g, "''")) + "')?$top=200");
+        else if(cur.k === 'site'){
+          const d = await graph('/sites/' + cur.id + '/drives');
+          items = d.value.map(x => ({name: x.name, folder: true, drive: x.id}));
+          list.innerHTML = ''; items.forEach(x => list.append(h('button',{class:'odi', onclick:() => { stack.push({k:'drive', d:x.drive, name:x.name}); render(); }}, h('span',{class:'ic'}, '📚'), h('span',{class:'nm'}, x.name)))); items = []; updFoot(); return;
+        }
+        else if(cur.k === 'sites'){
+          const seen = new Map();
+          for(const p of ['/me/followedSites', '/sites?search=*&$top=200']){ try { const r = await graph(p); for(const s of r.value) if(!seen.has(s.id)) seen.set(s.id, s); } catch(e){} }
+          const ss = [...seen.values()].sort((a,b) => (a.displayName||'').localeCompare(b.displayName||''));
+          list.innerHTML = ''; ss.forEach(s => list.append(h('button',{class:'odi', onclick:() => { stack.push({k:'site', id:s.id, name:s.displayName || s.name}); render(); }}, h('span',{class:'ic'}, '🏢'), h('span',{class:'nm'}, s.displayName || s.name, h('small',{}, (s.webUrl || '').replace(/^https:\/\//, ''))))));
+          if(!ss.length) list.append(h('p',{style:'padding:16px;color:var(--muted)'}, 'No se encontraron bibliotecas.'));
+          items = []; updFoot(); return;
+        }
+        next = j['@odata.nextLink'] || null;
+        items = j.value.map(odMap).filter(x => x.d && x.i);
+        // si estamos en una carpeta, su unidad sirve para buscar
+        items.sort((a,b) => (b.folder - a.folder) || a.name.localeCompare(b.name, 'es', {numeric:true}));
+        if(cur.k === 'folder' || cur.k === 'drive'){
+          const cut = stack.filter(s => s.k !== 'search'); const recent = (prefs.odRecent || []).filter(r => JSON.stringify(r.stack) !== JSON.stringify(cut.slice(1)));
+          recent.unshift({stack: cut.slice(1)}); prefs.odRecent = recent.slice(0, 6); savePrefs();
+        }
+        draw();
+      } catch(e){
+        list.innerHTML = '';
+        if(e.message === 'login'){ list.append(h('p',{style:'padding:16px'}, 'La sesión de Microsoft ha caducado.'), h('button',{class:'btn pri wide', onclick:() => { finish(null); msLogin(); }}, 'Entrar otra vez')); }
+        else list.append(h('p',{style:'padding:16px;color:#c92a2a'}, 'Error: ' + e.message));
+      }
+    }
+    q.onkeydown = e => { if(e.key === 'Enter' && q.value.trim()){ const d = cur.d; if(!d) return; if(cur.k === 'search') stack.pop(); stack.push({k:'search', d, q:q.value.trim(), name:'«' + q.value.trim() + '»'}); render(); } };
+    bTree.onclick = async () => {
+      const root = cur; const found = []; const b = busy('Buscando PDF en subcarpetas…');
+      try {
+        const walk = async (d, i, depth) => { let j = await graph('/drives/' + d + '/items/' + i + '/children?$top=500');
+          while(true){ for(const it of j.value.map(odMap)){ if(it.folder && depth < 6) await walk(it.d || d, it.i, depth + 1); else if(!it.folder && filter.test(it.name)) found.push(it); if(found.length > 800) return; }
+            if(!j['@odata.nextLink']) break; j = await graph(j['@odata.nextLink']); } };
+        await walk(root.d, root.i, 0);
+      } catch(e){ b(); toast('Error: ' + e.message); return; }
+      b(); if(!found.length){ toast('No hay archivos válidos en esta carpeta'); return; }
+      if(await confirmSheet('Importar ' + found.length + ' archivos', 'Todos los PDF de «' + root.name + '» y sus subcarpetas. Se descargan uno a uno; deja la app abierta.', 'Importar', 'pri')) finish(found);
+    };
+    render();
+  });
+}
+async function importFromOD(){
+  if(!(await msEnsure())) return;
+  const got = await odBrowse({title:'Importar de OneDrive', filter:/\.pdf$/i, multi:true, key:'pdf'});
+  if(!got || !got.length) return;
+  const files = got.map(x => ({lazy:true, od:{d:x.d, i:x.i}, name:x.name, relPath:(x.path ? x.path + '/' : '') + x.name}));
+  let obra = curObra;
+  if(!obra && obras.length){ pendingFiles = files; const r = await chooseObra(files.length); if(r == null) return; obra = r; }
+  startImport(files, obra);
+}
+
 $('#bImport').onclick = () => sheet((sh, close) => {
   sh.append(h('h2',{}, 'Importar planos'), h('div',{class:'menu'},
-    h('button',{onclick:() => { close(); pickFiles(); }}, svgIcon('i-pdf'), 'Elegir archivos PDF o un ZIP'),
+    MS_ON ? h('button',{onclick:() => { close(); importFromOD(); }}, svgIcon('i-share'), 'Desde OneDrive / SharePoint de Cotecno') : '',
+    h('button',{onclick:() => { close(); pickFiles(); }}, svgIcon('i-pdf'), 'Elegir archivos PDF o un ZIP del móvil'),
     h('button',{onclick:() => { close(); $('#dirIn').click(); }}, svgIcon('i-list'), 'Elegir una carpeta completa (con subcarpetas)')),
     h('p',{style:'margin-top:12px'}, 'Muchos planos de golpe: descarga la carpeta de OneDrive como ZIP y elige ese único archivo; se importan todos los PDF de dentro, también los de subcarpetas. También puedes mantener pulsado un PDF y elegir «Seleccionar todo».'),
     acts(h('button',{class:'btn', onclick:() => close()}, 'Cancelar')));
@@ -1799,7 +2018,7 @@ async function cadScale(pi, all, ref){
     res = cadMatch(cad.segs, A.segs);
   } catch(e){ done(); console.error(e); toast(e.message || 'No se pudo leer el CAD', 4500); return; }
   done();
-  if(!res){ await confirmSheet('No encaja', 'No he podido encajar las líneas de «' + name + '» con esta página del PDF' + (cad && cad.segs.length < 64 ? ' (el CAD casi no tiene líneas: puede que el dibujo esté en referencias externas)' : '') + '. Comprueba que el CAD cubre esta zona, o usa «Calibrar a mano».', 'Entendido'); return; }
+  if(!res){ await confirmSheet('No encaja', 'No he podido encajar las líneas de «' + name + '» con esta página del PDF' + (cad && cad.segs.length < 64 ? ' (el CAD casi no tiene líneas: puede que el dibujo esté en referencias externas)' : '') + '. Comprueba que el CAD cubre esta zona, o usa «Calibrar a mano».', 'Entendido', 'pri'); return; }
   const {known, opts} = cadOpts(res, cad.units); let {pick} = cadOpts(res, cad.units);
   sheet((sh, close) => {
     const big = h('b',{style:'font-size:26px'}, cadLbl(pick));
@@ -1811,8 +2030,14 @@ async function cadScale(pi, all, ref){
   });
 }
 /* CAD de referencia por obra: se guarda una vez (solo las líneas) y sirve para todos sus planos */
-async function addCadRef(o){
-  const files = await cadPick(true); if(!files || !files.length) return; await tick();
+async function addCadRef(o, fromOD){
+  let files;
+  if(fromOD){
+    if(!(await msEnsure())) return; const got = await odBrowse({title:'CAD de referencia', filter:/\.(dwg|dxf)$/i, multi:true, key:'cad'}); if(!got || !got.length) return;
+    files = []; const d = busy('Descargando ' + got.length + ' archivo' + (got.length > 1 ? 's' : '') + '…');
+    try { for(const x of got) files.push(await odDownload(x, x.name)); } catch(e){ d(); toast('Error: ' + e.message); return; } d();
+  } else files = await cadPick(true);
+  if(!files || !files.length) return; await tick();
   const b = busy('Leyendo CAD…'); let ok = 0; const bad = [];
   for(let i = 0; i < files.length; i++){
     const f = files[i];
@@ -1841,7 +2066,8 @@ function cadRefsSheet(o){
     sh.append(h('h2',{}, 'CAD de referencia · ' + o.name),
       h('p',{}, 'Un DWG o DXF con la base de la obra (por ejemplo, una planta de arquitectura). La app lo compara con cada plano para sacar su escala, aunque sea de otra lámina, siempre que use la misma base. Si la obra tiene varias zonas, añade uno por zona.'),
       (o.cads || []).length ? list : h('p',{style:'color:var(--muted)'}, 'Todavía no hay ninguno.'),
-      h('button',{class:'btn wide', onclick:async () => { close(); if(await addCadRef(o)) cadRefsSheet(o); }}, svgIcon('i-plus'), 'Añadir DWG o DXF (puedes elegir varios)'),
+      MS_ON ? h('button',{class:'btn wide', onclick:async () => { close(); if(await addCadRef(o, true)) cadRefsSheet(o); }}, svgIcon('i-share'), 'Añadir desde OneDrive / SharePoint') : '',
+      h('button',{class:'btn wide', style:'margin-top:8px', onclick:async () => { close(); if(await addCadRef(o)) cadRefsSheet(o); }}, svgIcon('i-plus'), 'Añadir DWG o DXF del móvil (puedes elegir varios)'),
       (o.cads || []).length && plans.length ? h('button',{class:'btn wide pri', style:'margin-top:8px', onclick:() => { close(); bulkCadScale(o); }}, svgIcon('i-scale'), 'Poner escala a los planos de la obra') : '',
       acts(h('button',{class:'btn', onclick:() => close()}, 'Cerrar')));
   });
@@ -2468,10 +2694,10 @@ window.__notas = { get E(){ return E; }, get g(){ return gesture; }, get n(){ re
 // Actualiza la etiqueta de escala al moverse por el documento
 let lastTagPage = -1;
 setInterval(() => { if(E){ const p = currentPage(); if(p !== lastTagPage){ lastTagPage = p; updScaleTag(); } } }, 300);
-(async () => { await DB.open(); refreshLib(); initPdf().catch(()=>{}); })();
+(async () => { await DB.open(); if(MS_ON) await msHandleRedirect(); refreshLib(); initPdf().catch(()=>{}); })();
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 /* Actualizaciones sin tener que cerrar la app */
-const APP_V = '2026.11.11-18';
+const APP_V = '2026.11.11-19';
 async function checkUpdate(manual){
   try {
     const r = await fetch('index.html?v=' + Date.now(), {cache:'no-store'}); if(!r.ok) throw 0;
