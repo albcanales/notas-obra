@@ -562,8 +562,11 @@ async function daluxLink(o){
 }
 $('#bDalux').onclick = () => {
   const o = obras.find(x => x.id === curObra); if(!o) return;
-  const url = o.dalux && /^https?:\/\//i.test(o.dalux) ? o.dalux : 'https://field.dalux.com/';
-  window.open(url, '_blank', 'noopener');
+  if(o.dalux && /^https?:\/\//i.test(o.dalux)){ window.open(o.dalux, '_blank', 'noopener'); return; }
+  // Abrir la app de Dalux instalada en Android; si no se puede, su ficha de la tienda (con botón «Abrir»)
+  const PKG = 'air.dk.dalux.daluxqa';
+  if(/Android/i.test(navigator.userAgent)) location.href = 'intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=' + PKG + ';S.browser_fallback_url=' + encodeURIComponent('market://details?id=' + PKG) + ';end';
+  else window.open('https://field.dalux.com/', '_blank', 'noopener');
 };
 function noteMenu(n){
   sheet((sh, close) => {
@@ -2082,7 +2085,7 @@ setInterval(() => { if(E){ const p = currentPage(); if(p !== lastTagPage){ lastT
 (async () => { await DB.open(); refreshLib(); initPdf().catch(()=>{}); })();
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 /* Actualizaciones sin tener que cerrar la app */
-const APP_V = '2026.11.11-10';
+const APP_V = '2026.11.11-11';
 async function checkUpdate(manual){
   try {
     const r = await fetch('index.html?v=' + Date.now(), {cache:'no-store'}); if(!r.ok) throw 0;
