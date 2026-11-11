@@ -551,8 +551,9 @@ async function newObra(){
 function obraMenu(o){
   sheet((sh, close) => {
     sh.append(h('h2',{}, o.name), h('div',{class:'menu'},
+      h('button',{onclick:() => { close(); cadRefsSheet(o); }}, svgIcon('i-scale'), 'CAD de referencia (' + (o.cads || []).length + ')'),
       h('button',{onclick:async () => { close(); const t = await askText('Renombrar obra', o.name); if(t && t.trim()){ o.name = t.trim(); await DB.put('notes', o.id, o); refreshLib(); } }}, svgIcon('i-text'), 'Renombrar'),
-      h('button',{onclick:async () => { close(); if(await confirmSheet('Quitar obra', 'Se quita la obra «' + o.name + '». Sus planos no se borran: pasan a «Todas» sin obra.', 'Quitar')){ for(const n of notes.filter(n => n.obra === o.id)){ n.obra = ''; await DB.put('notes', n.id, n); } await DB.del('notes', o.id); selObra(''); refreshLib(); } }}, svgIcon('i-trash'), 'Quitar obra')));
+      h('button',{onclick:async () => { close(); if(await confirmSheet('Quitar obra', 'Se quita la obra «' + o.name + '». Sus planos no se borran: pasan a «Todas» sin obra.', 'Quitar')){ for(const n of notes.filter(n => n.obra === o.id)){ n.obra = ''; await DB.put('notes', n.id, n); } for(const c of (o.cads || [])) await DB.del('pdfs', c.id); await DB.del('notes', o.id); selObra(''); refreshLib(); } }}, svgIcon('i-trash'), 'Quitar obra')));
   });
 }
 async function daluxLink(o){
@@ -1473,7 +1474,8 @@ function scaleSheet(pi){
       h('p',{}, 'Actual: ' + (cur ? cur.label : 'sin escala') + '.'),
       auto,
       isPdf ? h('button',{class:'btn wide', onclick:() => { close(); setTool('cota'); E.calAll = all.checked; toast('Toca el número de una cota o una etiqueta «L = …» de un tramo', 3500); }}, svgIcon('i-len'), 'Tocar una cota o una «L =» del plano') : null,
-      isPdf ? h('button',{class:'btn wide', style:'margin-top:8px', onclick:() => { close(); cadScale(pi, all.checked); }}, svgIcon('i-scale'), 'Sacarla del CAD (DWG o DXF)') : null,
+      ...(isPdf ? ((obras.find(x => x.id === E.meta.obra) || {}).cads || []).map(c => h('button',{class:'btn wide pri', style:'margin-top:8px', onclick:() => { close(); cadScale(pi, all.checked, c); }}, svgIcon('i-scale'), 'Con el CAD de la obra: ' + c.name.replace(/\.(dwg|dxf)$/i, ''))) : []),
+      isPdf ? h('button',{class:'btn wide', style:'margin-top:8px', onclick:() => { close(); cadScale(pi, all.checked); }}, svgIcon('i-scale'), 'Sacarla de otro CAD (DWG o DXF)') : null,
       h('p',{style:'margin-top:14px'}, 'O elige la escala a mano (exacta si el PDF sale de CAD al tamaño de papel real):'),
       chips, h('div',{class:'row'}, custom),
       h('label',{class:'check'}, all, 'Aplicar a todas las páginas'),
@@ -1696,13 +1698,21 @@ function posMatchScale(cadSegs, pdfSegs, opt={}){
         const A2 = rot === 0 ? alignCount(C.h, P.h, s, sy, tol) : alignCount(C.v, P.h, s, sy, tol);
         const sc = Math.min(A1.n, A2.n) * 2 + Math.max(A1.n, A2.n) * 0.5;
         scores.push({sc, lr: lrr});
-        if(!best || sc > best.sc) best = {sc, s, rot, A1, A2, n1:A1.n, n2:A2.n};
+        if(!best || sc > best.sc) best = {sc, s, rot, sx, sy, A1, A2, n1:A1.n, n2:A2.n};
       }
     }
   }
   if(!best) return null;
   // segundo mejor con escala distinta (>3 %)
   const lrB = -Math.log(best.s); let second = 0; for(const x of scores) if(Math.abs(x.lr - lrB) > 0.03 && x.sc > second) second = x.sc;
+  // búsqueda fina alrededor del mejor candidato (pasos de 0,05 %, tolerancia más estrecha)
+  { const cnt = sv => { const B1 = best.rot === 0 ? alignCount(C.v, P.v, sv, best.sx, tol*0.6) : alignCount(C.h, P.v, sv, best.sx, tol*0.6);
+      const B2 = best.rot === 0 ? alignCount(C.h, P.h, sv, best.sy, tol*0.6) : alignCount(C.v, P.h, sv, best.sy, tol*0.6); return {n: B1.n + B2.n, B1, B2}; };
+    const row = []; for(let i = -24; i <= 24; i++){ const sv = best.s * Math.exp(i * 0.0005); row.push({i, sv, ...cnt(sv)}); }
+    const mx = Math.max(...row.map(r => r.n)); const top = row.filter(r => r.n >= mx - 1);
+    // centro de la meseta de máximos
+    const mid = top[Math.floor(top.length / 2)];
+    best.s = mid.sv; best.A1 = mid.B1; best.A2 = mid.B2; best.n1 = mid.B1.n; best.n2 = mid.B2.n; }
   // afinar escala con mínimos cuadrados sobre los pares alineados de cada eje
   const fit = pairs => { if(pairs.length < 3) return null; const mx = pairs.reduce((a,p)=>a+p[0],0)/pairs.length, my = pairs.reduce((a,p)=>a+p[1],0)/pairs.length; let sxy = 0, sxx = 0; for(const [x,y] of pairs){ sxy += (x-mx)*(y-my); sxx += (x-mx)*(x-mx); } return sxx > 0 ? sxy / sxx : null; };
   const f1 = fit(best.A1.pairs), f2 = fit(best.A2.pairs); const fs = [f1, f2].filter(v => v && v > 0);
@@ -1723,7 +1733,7 @@ async function readCad(file){
 }
 async function cadPick(){
   if(window.showOpenFilePicker && !prefs.legacyPicker){
-    const near = E.meta ? await getHandle(E.meta.id) : null;
+    const near = E && E.meta ? await getHandle(E.meta.id) : null;
     const opts = {multiple:false, id:'cad'};
     try { const [fh] = await window.showOpenFilePicker(near ? {...opts, startIn:near} : opts); return await fh.getFile(); }
     catch(err){ if(err && err.name === 'AbortError') return null;
@@ -1732,40 +1742,135 @@ async function cadPick(){
   }
   return new Promise(res => { const inp = $('#cadIn'); inp.value = ''; inp.onchange = () => res(inp.files[0] || null); inp.click(); });
 }
-async function cadScale(pi, all){
-  const f = await cadPick(); if(!f) return;
-  await new Promise(r => setTimeout(r, 0));
-  const done = busy(/\.dwg$/i.test(f.name) ? 'Leyendo el DWG… (la primera vez descarga el lector, unos 10 MB)' : 'Leyendo el DXF…');
-  let cad, res;
-  try {
-    cad = await readCad(f);
-    const A = await analyzePage(pi);
-    const ps = new Array(A.segs.length); for(let i = 0; i < A.segs.length; i += 2){ ps[i] = A.segs[i]; ps[i+1] = -A.segs[i+1]; }
-    res = cad.segs.length >= 16 ? cadMatchScale(cad.segs, ps, {}) : null;
-    const okL = res && res.support >= 12 && res.peak >= 1.25 * Math.max(1, res.second);
-    if(!okL && cad.segs.length >= 16){
-      // Segundo método: alinear ejes y caras de muros (funciona aunque las líneas estén cortadas por conductos, textos…)
-      await new Promise(r => setTimeout(r, 30));
-      const pr = posMatchScale(cad.segs, ps, {K: 80});
-      res = pr && pr.aligned >= 16 && pr.peak >= 1.15 * Math.max(1, pr.second) ? {r: pr.r, rot: pr.rot, support: pr.aligned, peak: 2, second: 1, how: 'ejes'} : null;
+async function pdfPageSegs(pg){
+  const U = pdfjsLib.Util, OPS = pdfjsLib.OPS; const vp = pg.getViewport({scale:1});
+  const ol = await pg.getOperatorList();
+  const segs = []; let ctm = [1,0,0,1,0,0]; const st = [];
+  const MAXS = 2.4e6;
+  for(let i=0; i<ol.fnArray.length && segs.length < MAXS; i++){
+    const fn = ol.fnArray[i], a = ol.argsArray[i];
+    if(fn === OPS.save) st.push(ctm); else if(fn === OPS.restore) ctm = st.pop() || ctm;
+    else if(fn === OPS.transform) ctm = U.transform(ctm, a);
+    else if(fn === OPS.paintFormXObjectBegin){ st.push(ctm); if(a && a[0]) ctm = U.transform(ctm, a[0]); }
+    else if(fn === OPS.paintFormXObjectEnd) ctm = st.pop() || ctm;
+    else if(fn === OPS.constructPath){
+      const ops = a[0], co = a[1]; const T = U.transform(vp.transform, ctm);
+      const P = (x,y) => [T[0]*x + T[2]*y + T[4], T[1]*x + T[3]*y + T[5]];
+      let k = 0, cx = 0, cy = 0, sx = null, sy = null;
+      for(const op of ops){
+        if(op === OPS.moveTo){ [cx,cy] = P(co[k], co[k+1]); sx = cx; sy = cy; k += 2; }
+        else if(op === OPS.lineTo){ const [x,y] = P(co[k], co[k+1]); k += 2; segs.push(cx,cy,x,y); cx = x; cy = y; }
+        else if(op === OPS.curveTo){ [cx,cy] = P(co[k+4], co[k+5]); k += 6; }
+        else if(op === OPS.curveTo2 || op === OPS.curveTo3){ [cx,cy] = P(co[k+2], co[k+3]); k += 4; }
+        else if(op === OPS.rectangle){ const x=co[k], y=co[k+1], w=co[k+2], hh=co[k+3]; k += 4; const p1=P(x,y), p2=P(x+w,y), p3=P(x+w,y+hh), p4=P(x,y+hh); segs.push(...p1,...p2, ...p2,...p3, ...p3,...p4, ...p4,...p1); [cx,cy] = p1; sx = cx; sy = cy; }
+        else if(op === OPS.closePath){ if(sx != null && (cx !== sx || cy !== sy)) segs.push(cx,cy,sx,sy); cx = sx; cy = sy; }
+      }
     }
+  }
+  return segs;
+}
+function cadMatch(cadSegs, pdfSegs){
+  if(!cadSegs || cadSegs.length < 64) return null;
+  const ps = new Array(pdfSegs.length); for(let i = 0; i < pdfSegs.length; i += 2){ ps[i] = pdfSegs[i]; ps[i+1] = -pdfSegs[i+1]; }
+  const r1 = cadMatchScale(cadSegs, ps, {});
+  if(r1 && r1.support >= 12 && r1.peak >= 1.25 * Math.max(1, r1.second)) return {r: r1.r, rot: r1.rot, support: r1.support};
+  // Segundo método: alinear ejes y caras de muros (funciona aunque las líneas estén cortadas por conductos, textos…)
+  const pr = posMatchScale(cadSegs, ps, {K: 80});
+  return pr && pr.aligned >= 16 && pr.peak >= 1.15 * Math.max(1, pr.second) ? {r: pr.r, rot: pr.rot, support: pr.aligned, how: 'ejes'} : null;
+}
+const CAD_U = {1:'pulgadas', 2:'pies', 4:'mm', 5:'cm', 6:'m'};
+function cadOpts(res, units){
+  const known = CAD_UNITS[units];
+  const opts = (known ? [[units, known]] : [[4,1],[5,10],[6,1000]]).map(([u, k]) => { let n = res.r * k / PT_MM; const raw = n; for(const st of STD) if(Math.abs(n - st) / st < 0.004) n = st; return {u, n, raw, mmPerPt: n * PT_MM}; });
+  const pick = opts.slice().sort((a, b) => { const sc = o => (o.n >= 5 && o.n <= 2000 ? 0 : 10) + Math.abs(Math.log(o.n / 100)); return sc(a) - sc(b); })[0];
+  return {known, opts, pick};
+}
+const cadLbl = o => '1:' + (Math.abs(o.n - Math.round(o.n)) < 0.05 ? nf(Math.round(o.n), 0) : nf(o.n, o.n < 10 ? 2 : 1));
+const tick = () => new Promise(r => setTimeout(r, 30));
+async function cadScale(pi, all, ref){
+  let cad, name, res;
+  if(ref){ name = ref.name; }
+  else { const f = await cadPick(); if(!f) return; name = f.name; await tick(); var file = f; }
+  const done = busy(ref ? 'Comparando con el CAD de referencia…' : /\.dwg$/i.test(name) ? 'Leyendo el DWG… (la primera vez descarga el lector, unos 10 MB)' : 'Leyendo el DXF…');
+  try {
+    cad = ref ? await loadCadRef(ref) : await readCad(file);
+    const A = await analyzePage(pi); await tick();
+    res = cadMatch(cad.segs, A.segs);
   } catch(e){ done(); console.error(e); toast(e.message || 'No se pudo leer el CAD', 4500); return; }
   done();
-  const ok = res && (res.how === 'ejes' || (res.support >= 12 && res.peak >= 1.25 * Math.max(1, res.second)));
-  if(!ok){ await confirmSheet('No encaja', 'No he podido encajar las líneas de «' + f.name + '» con esta página del PDF' + (cad && cad.segs.length < 16 ? ' (el CAD casi no tiene líneas: puede que el dibujo esté en referencias externas)' : '') + '. Comprueba que es el mismo plano, o usa «Calibrar a mano».', 'Entendido'); return; }
-  const known = CAD_UNITS[cad.units];
-  const opts = (known ? [[cad.units, known]] : [[4,1],[5,10],[6,1000]]).map(([u, k]) => { let n = res.r * k / PT_MM; const raw = n; for(const st of STD) if(Math.abs(n - st) / st < 0.004) n = st; return {u, n, raw, mmPerPt: n * PT_MM}; });
-  const U = {1:'pulgadas', 2:'pies', 4:'mm', 5:'cm', 6:'m'};
-  let pick = opts.slice().sort((a, b) => { const sc = o => (o.n >= 5 && o.n <= 2000 ? 0 : 10) + Math.abs(Math.log(o.n / 100)); return sc(a) - sc(b); })[0];
+  if(!res){ await confirmSheet('No encaja', 'No he podido encajar las líneas de «' + name + '» con esta página del PDF' + (cad && cad.segs.length < 64 ? ' (el CAD casi no tiene líneas: puede que el dibujo esté en referencias externas)' : '') + '. Comprueba que el CAD cubre esta zona, o usa «Calibrar a mano».', 'Entendido'); return; }
+  const {known, opts} = cadOpts(res, cad.units); let {pick} = cadOpts(res, cad.units);
   sheet((sh, close) => {
-    const lbl = o => '1:' + (Math.abs(o.n - Math.round(o.n)) < 0.05 ? nf(Math.round(o.n), 0) : nf(o.n, o.n < 10 ? 2 : 1));
-    const big = h('b',{style:'font-size:26px'}, lbl(pick));
-    const unitRow = known ? h('p',{}, 'Unidades del dibujo: ' + U[cad.units] + '.') : h('div',{}, h('p',{}, 'El archivo no dice en qué unidades está dibujado. ¿Están en…?'), h('div',{class:'chips'}, ...opts.map(o => { const b = chipBtn(U[o.u] + ' → ' + lbl(o), o === pick, () => { pick = o; big.textContent = lbl(o); b.parentElement.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c === b)); }); return b; })));
+    const big = h('b',{style:'font-size:26px'}, cadLbl(pick));
+    const unitRow = known ? h('p',{}, 'Unidades del dibujo: ' + CAD_U[cad.units] + '.') : h('div',{}, h('p',{}, 'El archivo no dice en qué unidades está dibujado. ¿Están en…?'), h('div',{class:'chips'}, ...opts.map(o => { const b = chipBtn(CAD_U[o.u] + ' → ' + cadLbl(o), o === pick, () => { pick = o; big.textContent = cadLbl(o); b.parentElement.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c === b)); }); return b; })));
     sh.append(h('h2',{}, 'Escala sacada del CAD'), h('div',{class:'autores'}, h('div',{}, h('span',{}, 'Escala real de este PDF'), big)),
       Math.abs(pick.raw - pick.n) > 0.01 ? h('p',{}, 'Medida: 1:' + nf(pick.raw, 2) + ' → se redondea a la escala normal más próxima.') : '',
-      h('p',{}, (res.how === 'ejes' ? 'Se alinean ' + res.support + ' ejes y caras de muros del PDF con el CAD' : 'Coinciden ' + res.support + ' líneas del PDF con el CAD') + (() => { let g = res.rot; for(const q of [0, 90, 180]) if(Math.abs(g - q) <= 2) g = q; return g % 180 ? ' (el PDF está girado ' + nf(g, 0) + '°)' : ''; })() + '.'), unitRow,
-      acts(h('button',{class:'btn', onclick:() => close()}, 'Cancelar'), h('button',{class:'btn pri', onclick:() => { setScale(pi, {n: pick.n, mmPerPt: pick.mmPerPt, label: lbl(pick) + ' (CAD)'}, all); close(); toast('Escala ' + lbl(pick) + ' aplicada'); }}, 'Aplicar')));
+      h('p',{}, (res.how === 'ejes' ? 'Se alinean ' + res.support + ' ejes y caras de muros del PDF con «' + name + '»' : 'Coinciden ' + res.support + ' líneas del PDF con «' + name + '»') + (() => { let g = res.rot; for(const q of [0, 90, 180]) if(Math.abs(g - q) <= 2) g = q; return g % 180 ? ' (el PDF está girado ' + nf(g, 0) + '°)' : ''; })() + '.'), unitRow,
+      acts(h('button',{class:'btn', onclick:() => close()}, 'Cancelar'), h('button',{class:'btn pri', onclick:() => { setScale(pi, {n: pick.n, mmPerPt: pick.mmPerPt, label: cadLbl(pick) + ' (CAD)'}, all); close(); toast('Escala ' + cadLbl(pick) + ' aplicada'); }}, 'Aplicar')));
   });
+}
+/* CAD de referencia por obra: se guarda una vez (solo las líneas) y sirve para todos sus planos */
+async function addCadRef(o){
+  const f = await cadPick(); if(!f) return; await tick();
+  const done = busy(/\.dwg$/i.test(f.name) ? 'Leyendo el DWG… (la primera vez descarga el lector, unos 10 MB)' : 'Leyendo el DXF…');
+  try {
+    const cad = await readCad(f);
+    if(cad.segs.length < 64) throw new Error('Ese CAD casi no tiene líneas (¿dibujo en referencias externas?)');
+    const id = 'cad_' + uid();
+    await DB.put('pdfs', id, {segs: new Float32Array(cad.segs), units: cad.units});
+    o.cads = (o.cads || []).concat([{id, name: f.name, units: cad.units, n: cad.segs.length / 4}]);
+    await DB.put('notes', o.id, o); done(); await refreshLib();
+    toast('CAD de referencia guardado: ' + f.name, 3500); return true;
+  } catch(e){ done(); console.error(e); toast(e.message || 'No se pudo leer el CAD', 4500); }
+}
+async function loadCadRef(ref){ const d = await DB.get('pdfs', ref.id); if(!d) throw new Error('Falta el CAD de referencia; vuelve a añadirlo'); return {segs: d.segs, units: d.units}; }
+function cadRefsSheet(o){
+  sheet((sh, close) => {
+    const list = h('div',{class:'menu'});
+    (o.cads || []).forEach(c => list.append(h('button',{onclick:async () => { close(); if(await confirmSheet('Quitar CAD de referencia', '«' + c.name + '» dejará de usarse para esta obra. Las escalas ya puestas no cambian.', 'Quitar')){ o.cads = o.cads.filter(x => x !== c); await DB.del('pdfs', c.id); await DB.put('notes', o.id, o); refreshLib(); } }}, svgIcon('i-trash'), c.name)));
+    const plans = notes.filter(n => n.obra === o.id && n.kind === 'pdf' && !n.archived);
+    sh.append(h('h2',{}, 'CAD de referencia · ' + o.name),
+      h('p',{}, 'Un DWG o DXF con la base de la obra (por ejemplo, una planta de arquitectura). La app lo compara con cada plano para sacar su escala, aunque sea de otra lámina, siempre que use la misma base. Si la obra tiene varias zonas, añade uno por zona.'),
+      (o.cads || []).length ? list : h('p',{style:'color:var(--muted)'}, 'Todavía no hay ninguno.'),
+      h('button',{class:'btn wide', onclick:async () => { close(); if(await addCadRef(o)) cadRefsSheet(o); }}, svgIcon('i-plus'), 'Añadir DWG o DXF'),
+      (o.cads || []).length && plans.length ? h('button',{class:'btn wide pri', style:'margin-top:8px', onclick:() => { close(); bulkCadScale(o); }}, svgIcon('i-scale'), 'Poner escala a los planos de la obra') : '',
+      acts(h('button',{class:'btn', onclick:() => close()}, 'Cerrar')));
+  });
+}
+async function bulkCadScale(o){
+  const all = notes.filter(n => n.obra === o.id && n.kind === 'pdf' && !n.archived);
+  const unscaled = [];
+  for(const n of all){ const a = await DB.get('ann', n.id); if(!a || !a.pages.some(p => p.scale)) unscaled.push(n); }
+  const which = await sheet((sh, close) => sh.append(h('h2',{}, 'Poner escala con el CAD'),
+    h('p',{}, 'Se compara cada plano con ' + (o.cads.length === 1 ? '«' + o.cads[0].name + '»' : 'los ' + o.cads.length + ' CAD de referencia') + '. Tarda unos segundos por plano; deja la app abierta.'),
+    h('div',{class:'menu'},
+      h('button',{onclick:() => close(unscaled)}, svgIcon('i-scale'), 'Solo los que no tienen escala (' + unscaled.length + ')'),
+      h('button',{onclick:() => close(all)}, svgIcon('i-list'), 'Todos los planos de la obra (' + all.length + ')')),
+    acts(h('button',{class:'btn', onclick:() => close(null)}, 'Cancelar'))));
+  if(!which || !which.length){ if(which) toast('No hay planos sin escala'); return; }
+  const refs = []; for(const c of o.cads){ try { refs.push({c, cad: await loadCadRef(c)}); } catch(e){} }
+  const b = document.createElement('div'); b.className = 'busy'; b.innerHTML = '<div></div>'; document.body.appendChild(b);
+  let ok = 0; const fail = [];
+  try { await initPdf(); } catch(e){}
+  for(let k = 0; k < which.length; k++){
+    const n = which[k];
+    b.firstChild.textContent = 'Plano ' + (k+1) + ' de ' + which.length + '…'; await tick();
+    try {
+      const bytes = await DB.get('pdfs', n.id); if(!bytes) throw 0;
+      const doc = await loadPdf(bytes); const an = await DB.get('ann', n.id); let got = false;
+      for(let pi = 0; pi < Math.min(doc.numPages, 8); pi++){
+        const segs = await pdfPageSegs(await doc.getPage(pi+1)); await tick();
+        for(const {cad} of refs){ const res = cadMatch(cad.segs, segs); await tick();
+          if(res){ const {pick} = cadOpts(res, cad.units); an.pages[pi].scale = {n: pick.n, mmPerPt: pick.mmPerPt, label: cadLbl(pick) + ' (CAD)'}; got = true; break; } }
+      }
+      doc.destroy();
+      if(got){ await DB.put('ann', n.id, an); ok++; } else fail.push(n.title);
+    } catch(e){ console.warn(e); fail.push(n.title); }
+  }
+  b.remove();
+  await sheet((sh, close) => sh.append(h('h2',{}, 'Escalas puestas'), h('p',{}, ok + ' de ' + which.length + ' planos con escala sacada del CAD.'),
+    fail.length ? h('p',{}, 'No encajan (pon la escala a mano o añade el CAD de su zona): ' + fail.slice(0, 8).join(', ') + (fail.length > 8 ? '…' : '') + '.') : '',
+    acts(h('button',{class:'btn pri', onclick:() => close()}, 'Vale'))));
 }
 async function calibrate(d){
   const Lpt = polyLen(d.p);
@@ -2357,7 +2462,7 @@ setInterval(() => { if(E){ const p = currentPage(); if(p !== lastTagPage){ lastT
 (async () => { await DB.open(); refreshLib(); initPdf().catch(()=>{}); })();
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 /* Actualizaciones sin tener que cerrar la app */
-const APP_V = '2026.11.11-16';
+const APP_V = '2026.11.11-17';
 async function checkUpdate(manual){
   try {
     const r = await fetch('index.html?v=' + Date.now(), {cache:'no-store'}); if(!r.ok) throw 0;
