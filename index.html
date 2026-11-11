@@ -1938,7 +1938,58 @@ function posMatchScale(cadSegs, pdfSegs, opt={}){
   const sFin = fs.length ? fs.reduce((a,b)=>a+b,0) / fs.length : best.s;
   return {r: 1 / sFin, rot: best.rot, aligned: best.n1 + best.n2, n1: best.n1, n2: best.n2, peak: best.sc, second};
 }
+/* Lectura del CAD en segundo plano (Web Worker): la pantalla no se congela y, al terminar,
+   se cierra el worker y se libera toda la memoria del lector de DWG */
+const CAD_MAX_MB = 60, CAD_TIMEOUT = 240000;
+let cadWorkerUrl = null;
+function cadWorker(){
+  if(!cadWorkerUrl){
+    const src = [cadXf, cadMul, insertXf, cadFlatten, parseDxf, dwgToSegs].map(f => f.toString()).join('\n') + `
+self.onmessage = async ev => {
+  const {kind, buf, dist, wasm} = ev.data;
+  try {
+    let r;
+    if(kind === 'dxf') r = parseDxf(new TextDecoder().decode(buf));
+    else {
+      const m = await import(dist); const lib = await m.LibreDwg.create(wasm);
+      const dwg = lib.dwg_read_data(buf, m.Dwg_File_Type.DWG);
+      if(!dwg) throw new Error('No se pudo leer el DWG');
+      let db; try { db = lib.convert(dwg); } finally { try { lib.dwg_free(dwg); } catch(e){} }
+      r = dwgToSegs(db); db = null;
+    }
+    const segs = Float64Array.from(r.segs);
+    self.postMessage({ok:true, segs, units:r.units}, [segs.buffer]);
+  } catch(e){ self.postMessage({ok:false, msg: (e && e.message) || String(e)}); }
+};`;
+    cadWorkerUrl = URL.createObjectURL(new Blob([src], {type:'text/javascript'}));
+  }
+  return new Worker(cadWorkerUrl);
+}
+function readCadBg(file, kind){
+  return new Promise(async (res, rej) => {
+    let w; try { w = cadWorker(); } catch(e){ return rej(Object.assign(new Error('sin worker'), {noWorker:true})); }
+    const end = () => { clearTimeout(to); try { w.terminate(); } catch(e){} };
+    const to = setTimeout(() => { end(); rej(new Error('«' + file.name + '» tarda demasiado en leerse. Prueba con un DWG más ligero (solo la planta base, con «Limpiar»)')); }, CAD_TIMEOUT);
+    w.onmessage = ev => { end(); ev.data.ok ? res({segs: ev.data.segs, units: ev.data.units}) : rej(new Error(ev.data.msg)); };
+    w.onerror = ev => { ev.preventDefault && ev.preventDefault(); end(); rej(new Error('El móvil se quedó sin memoria leyendo «' + file.name + '». Prueba con un DWG más ligero (solo la planta base)')); };
+    try {
+      const buf = await file.arrayBuffer();
+      w.postMessage({kind, buf, dist: new URL(DWG_BASE + 'dist/libredwg-web.js', location.href).href, wasm: new URL(DWG_BASE + 'wasm/', location.href).href.replace(/\/$/, '')}, [buf]);
+    } catch(e){ end(); rej(e); }
+  });
+}
 async function readCad(file){
+  const name = file.name.toLowerCase();
+  const kind = name.endsWith('.dxf') ? 'dxf' : name.endsWith('.dwg') ? 'dwg' : null;
+  if(!kind) throw new Error('Elige un archivo .dwg o .dxf');
+  if(file.size > CAD_MAX_MB * 1048576) throw new Error('«' + file.name + '» pesa ' + Math.round(file.size / 1048576) + ' MB (máximo ' + CAD_MAX_MB + ' MB). Guarda una copia solo con la planta base');
+  if(!window.__cadMainThread){
+    try { return await readCadBg(file, kind); }
+    catch(e){ if(!e.noWorker) throw e; console.warn('CAD sin worker, se lee en la página'); }
+  }
+  return readCadMain(file);
+}
+async function readCadMain(file){
   const name = file.name.toLowerCase();
   if(name.endsWith('.dxf')) return parseDxf(await file.text());
   if(name.endsWith('.dwg')){
@@ -2050,11 +2101,11 @@ async function addCadRef(o, fromOD){
       await DB.put('pdfs', id, {segs: new Float32Array(cad.segs), units: cad.units});
       o.cads = (o.cads || []).concat([{id, name: f.name, units: cad.units, n: cad.segs.length / 4}]);
       await DB.put('notes', o.id, o); ok++;
-    } catch(e){ console.error(e); bad.push(f.name); }
+    } catch(e){ console.error(e); bad.push(e && e.message && e.message.indexOf(f.name) >= 0 ? e.message : f.name + (e && e.message ? ' (' + e.message + ')' : '')); }
     b2();
   }
   await refreshLib();
-  toast(ok + (ok === 1 ? ' CAD de referencia añadido' : ' CAD de referencia añadidos') + (bad.length ? ' · no se pudieron leer: ' + bad.join(', ') : ''), 4500);
+  toast(ok + (ok === 1 ? ' CAD de referencia añadido' : ' CAD de referencia añadidos') + (bad.length ? ' · no se pudieron leer: ' + bad.join(' · ') : ''), bad.length ? 9000 : 4500);
   return ok > 0;
 }
 async function loadCadRef(ref){ const d = await DB.get('pdfs', ref.id); if(!d) throw new Error('Falta el CAD de referencia; vuelve a añadirlo'); return {segs: d.segs, units: d.units}; }
@@ -2697,7 +2748,7 @@ setInterval(() => { if(E){ const p = currentPage(); if(p !== lastTagPage){ lastT
 (async () => { await DB.open(); if(MS_ON) await msHandleRedirect(); refreshLib(); initPdf().catch(()=>{}); })();
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 /* Actualizaciones sin tener que cerrar la app */
-const APP_V = '2026.11.11-19';
+const APP_V = '2026.11.11-20';
 async function checkUpdate(manual){
   try {
     const r = await fetch('index.html?v=' + Date.now(), {cache:'no-store'}); if(!r.ok) throw 0;
