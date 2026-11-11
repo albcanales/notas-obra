@@ -1461,7 +1461,7 @@ function scaleSheet(pi){
   sheet((sh, close) => {
     const cur = E.ann.pages[pi].scale;
     let sel = cur && cur.n ? cur.n : null;
-    const custom = h('input',{class:'field', inputmode:'numeric', placeholder:'Otra: 1:…', style:'width:150px'});
+    const custom = h('input',{class:'field', inputmode:'decimal', placeholder:'Otra: 1:…', style:'width:150px'});
     const chips = h('div',{class:'chips'});
     [20,25,50,75,100,150,200,250,500,1000].forEach(n => chips.append(h('button',{class:'chip' + (n===sel?' on':''), onclick:ev => { sel=n; custom.value=''; [...chips.children].forEach(c=>c.classList.remove('on')); ev.currentTarget.classList.add('on'); }}, '1:' + n)));
     custom.oninput = () => { sel = null; [...chips.children].forEach(c=>c.classList.remove('on')); };
@@ -1480,7 +1480,7 @@ function scaleSheet(pi){
         h('button',{class:'btn pri', onclick:() => {
           const n = sel || parseFloat(String(custom.value).replace(/^1\s*:\s*/,'').replace(',', '.'));
           if(!n || n <= 0){ toast('Elige una escala'); return; }
-          setScale(pi, {n, mmPerPt: PT_MM * n, label:'1:' + nf(n, 0)}, all.checked); close(); toast('Escala 1:' + nf(n,0) + ' aplicada');
+          const dg = Math.abs(n - Math.round(n)) < 0.05 ? 0 : 1; setScale(pi, {n, mmPerPt: PT_MM * n, label:'1:' + nf(n, dg)}, all.checked); close(); toast('Escala 1:' + nf(n,dg) + ' aplicada');
         }}, 'Aplicar')));
     if(isPdf) detectScale(pi).then(res => {
       auto.innerHTML = '';
@@ -2083,7 +2083,7 @@ setInterval(() => { if(E){ const p = currentPage(); if(p !== lastTagPage){ lastT
 (async () => { await DB.open(); refreshLib(); initPdf().catch(()=>{}); })();
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 /* Actualizaciones sin tener que cerrar la app */
-const APP_V = '2026.11.11-12';
+const APP_V = '2026.11.11-13';
 async function checkUpdate(manual){
   try {
     const r = await fetch('index.html?v=' + Date.now(), {cache:'no-store'}); if(!r.ok) throw 0;
