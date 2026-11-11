@@ -389,7 +389,7 @@ async function refreshLib(){
   const all = await DB.all('notes');
   obras = all.filter(n => n.kind === 'obra').sort((a,b) => natural(a.name, b.name));
   notes = all.filter(n => n.kind !== 'obra').sort((a,b) => b.updated - a.updated);
-  const CLASS_V = 3;
+  const CLASS_V = 4;
   if((prefs.classV || 0) < CLASS_V){
     for(const n of notes) if(n.kind === 'pdf' && !n.manualTags){ const c = classify(n.title); if(c.zona !== (n.zona||'') || c.inst !== (n.inst||'')){ n.zona = c.zona || n.zona || ''; n.inst = c.inst || n.inst || ''; await DB.put('notes', n.id, n); } }
     prefs.classV = CLASS_V; savePrefs();
@@ -601,7 +601,7 @@ function moveSheet(n){
 }
 /* Clasificación por nombre de archivo */
 const INST_RULES = [
-  ['Climatización', /\b(CLIMA\w*|CLI|HVAC|CLIM|VENT\w*|CALEF\w*|AIRE|EXTRACC\w*|CONDUCT\w*|REJILL\w*|DIFUS\w*|UTA|UTAS|FANCOIL\w*|REFRIG\w*)\b/],
+  ['Climatización', /\b(CLIMA\w*|CLI|HVAC|CLIM|VENT\w*|CALEF\w*|AIRE|EXTRACC\w*|CONDUCT\w*|REJILL\w*|DIFUS\w*|UTA|UTAS|FANCOIL\w*|REFRIG\w*|CONDENS\w*)\b/],
   ['Protección contra incendios', /\b(PCI|INC|INCEND\w*|FIRE|ROCIAD\w*|SPK|DETECC\w*|EXTINC\w*|BIE)\b/],
   ['Iluminación', /\b(ILUM\w*|ALUM\w*|LUM\w*|LIGHT\w*|EMERG\w*)\b/],
   ['Electricidad', /\b(ELEC\w*|ELE|BT|MT|FUERZA|CUADROS?|CGBT|UNIFILAR\w*|BANDEJ\w*|TOMAS|ENCHUF\w*|CANALIZ\w*)\b/],
@@ -795,7 +795,7 @@ async function restoreSheet(n){
   if(fh){
     const done = busy('Recuperando de ' + (fh.name || 'su ubicación') + '…');
     try { const f = await fileFromHandle(fh); f.__fh = fh; done(); if(await restoreWith(n, f, true)){ await refreshLib(); openNote(n.id); return; } }
-    catch(e){ done(); console.warn(e); why = /permiso/.test(e.message) ? 'No se dio permiso para leer el archivo.' : 'No se encontró el PDF donde estaba (puede que lo hayan movido, renombrado o que no haya conexión).'; }
+    catch(e){ done(); console.warn(e); why = (/permiso/.test(e.message) ? 'No se dio permiso para leer el archivo.' : 'No se pudo leer el PDF donde estaba (puede que lo hayan movido, renombrado o que no haya conexión).') + ' [' + ((e && e.name) || 'Error') + (e && e.message ? ': ' + String(e.message).slice(0, 90) : '') + ']'; }
   }
   sheet((sh, close) => {
     sh.append(h('h2',{}, 'Plano archivado'),
