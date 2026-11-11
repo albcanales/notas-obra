@@ -761,9 +761,22 @@ async function restoreFrom(n, file){
   await DB.put('notes', n.id, n); await saveHandle(n.id, file);
   return np === n.pages.length;
 }
-async function pickOnePdf(){
+// Carpeta donde abrir el selector: la de un plano de la misma zona (o de la misma obra) cuya ubicación se conoce
+async function nearHandle(n){
+  if(!n || fhOff) return null;
+  const same = (a, b) => (a || '') === (b || '');
+  const cands = [n, ...notes.filter(x => x !== n && x.kind === 'pdf' && same(x.obra, n.obra) && same(x.zona, n.zona) && same(x.inst, n.inst)),
+    ...notes.filter(x => x !== n && x.kind === 'pdf' && same(x.obra, n.obra) && same(x.zona, n.zona)),
+    ...notes.filter(x => x !== n && x.kind === 'pdf' && same(x.obra, n.obra))];
+  const seen = new Set();
+  for(const c of cands){ if(seen.has(c.id)) continue; seen.add(c.id); if(seen.size > 40) break; const fh = await getHandle(c.id); if(fh) return fh; }
+  return null;
+}
+async function pickOnePdf(n){
   if(window.showOpenFilePicker && !prefs.legacyPicker){
-    try { const [fh] = await window.showOpenFilePicker({multiple:false, types:[{description:'Plano PDF', accept:{'application/pdf':['.pdf']}}]}); const f = await fh.getFile(); f.__fh = fh; return f; }
+    const opts = {multiple:false, types:[{description:'Plano PDF', accept:{'application/pdf':['.pdf']}}]};
+    const near = await nearHandle(n);
+    try { let fh; try { [fh] = await window.showOpenFilePicker(near ? {...opts, startIn:near} : opts); } catch(err){ if(!near || (err && err.name === 'AbortError')) throw err; [fh] = await window.showOpenFilePicker(opts); } const f = await fh.getFile(); f.__fh = fh; return f; }
     catch(err){ if(err && err.name === 'AbortError') return null; console.warn(err); }
   }
   return await new Promise(res => { const inp = $('#reIn'); inp.value = ''; inp.onchange = () => res(inp.files[0] || null); inp.click(); });
@@ -788,7 +801,7 @@ async function restoreSheet(n){
     sh.append(h('h2',{}, 'Plano archivado'),
       h('p',{}, (why ? why + ' ' : '') + '«' + n.title + '» está archivado para ahorrar espacio. Tus notas, medidas y fotos siguen guardadas. Elige otra vez el PDF (de la nube o del móvil) y se recupera todo; la app recordará dónde está para la próxima vez.'),
       acts(h('button',{class:'btn', onclick:() => close()}, 'Cancelar'),
-        h('button',{class:'btn pri', onclick:async () => { close(); const f = await pickOnePdf(); if(!f) return; if(await restoreWith(n, f, false)){ await refreshLib(); openNote(n.id); } }}, 'Elegir el PDF')));
+        h('button',{class:'btn pri', onclick:async () => { close(); const f = await pickOnePdf(n); if(!f) return; if(await restoreWith(n, f, false)){ await refreshLib(); openNote(n.id); } }}, 'Elegir el PDF')));
   });
 }
 async function spaceSheet(){
@@ -833,7 +846,7 @@ async function pickFiles(){
   // Selector moderno (Chrome 132+ en Android): permite elegir varios archivos también en OneDrive
   if(window.showOpenFilePicker && !prefs.legacyPicker){
     try {
-      const hs = await window.showOpenFilePicker({multiple:true, types:[{description:'Planos PDF o ZIP', accept:{'application/pdf':['.pdf'], 'application/zip':['.zip']}}]});
+      const hs = await window.showOpenFilePicker({multiple:true, id:'planos', types:[{description:'Planos PDF o ZIP', accept:{'application/pdf':['.pdf'], 'application/zip':['.zip']}}]});
       const l = []; for(const h of hs){ const f = await h.getFile(); f.__fh = h; l.push(f); }
       handleFiles(l); return;
     } catch(err){ if(err && err.name === 'AbortError') return; console.warn(err); }
