@@ -1731,16 +1731,17 @@ async function readCad(file){
   }
   throw new Error('Elige un archivo .dwg o .dxf');
 }
-async function cadPick(){
+async function cadPick(multi){
   if(window.showOpenFilePicker && !prefs.legacyPicker){
     const near = E && E.meta ? await getHandle(E.meta.id) : null;
-    const opts = {multiple:false, id:'cad'};
-    try { const [fh] = await window.showOpenFilePicker(near ? {...opts, startIn:near} : opts); return await fh.getFile(); }
+    const opts = {multiple:!!multi, id:'cad'};
+    const got = async hs => { const fs = []; for(const fh of hs) fs.push(await fh.getFile()); return multi ? fs : fs[0]; };
+    try { return await got(await window.showOpenFilePicker(near ? {...opts, startIn:near} : opts)); }
     catch(err){ if(err && err.name === 'AbortError') return null;
-      if(near) try { const [fh] = await window.showOpenFilePicker(opts); return await fh.getFile(); } catch(e2){ if(e2 && e2.name === 'AbortError') return null; }
+      if(near) try { return await got(await window.showOpenFilePicker(opts)); } catch(e2){ if(e2 && e2.name === 'AbortError') return null; }
       console.warn(err); }
   }
-  return new Promise(res => { const inp = $('#cadIn'); inp.value = ''; inp.onchange = () => res(inp.files[0] || null); inp.click(); });
+  return new Promise(res => { const inp = $('#cadIn'); inp.value = ''; inp.multiple = !!multi; inp.onchange = () => res(multi ? [...inp.files] : (inp.files[0] || null)); inp.click(); });
 }
 async function pdfPageSegs(pg){
   const U = pdfjsLib.Util, OPS = pdfjsLib.OPS; const vp = pg.getViewport({scale:1});
@@ -1811,17 +1812,25 @@ async function cadScale(pi, all, ref){
 }
 /* CAD de referencia por obra: se guarda una vez (solo las líneas) y sirve para todos sus planos */
 async function addCadRef(o){
-  const f = await cadPick(); if(!f) return; await tick();
-  const done = busy(/\.dwg$/i.test(f.name) ? 'Leyendo el DWG… (la primera vez descarga el lector, unos 10 MB)' : 'Leyendo el DXF…');
-  try {
-    const cad = await readCad(f);
-    if(cad.segs.length < 64) throw new Error('Ese CAD casi no tiene líneas (¿dibujo en referencias externas?)');
-    const id = 'cad_' + uid();
-    await DB.put('pdfs', id, {segs: new Float32Array(cad.segs), units: cad.units});
-    o.cads = (o.cads || []).concat([{id, name: f.name, units: cad.units, n: cad.segs.length / 4}]);
-    await DB.put('notes', o.id, o); done(); await refreshLib();
-    toast('CAD de referencia guardado: ' + f.name, 3500); return true;
-  } catch(e){ done(); console.error(e); toast(e.message || 'No se pudo leer el CAD', 4500); }
+  const files = await cadPick(true); if(!files || !files.length) return; await tick();
+  const b = busy('Leyendo CAD…'); let ok = 0; const bad = [];
+  for(let i = 0; i < files.length; i++){
+    const f = files[i];
+    b(); var b2 = busy((files.length > 1 ? (i+1) + ' de ' + files.length + ': ' : '') + (/\.dwg$/i.test(f.name) ? 'leyendo DWG… (la primera vez descarga el lector, unos 10 MB)' : 'leyendo ' + f.name + '…'));
+    try {
+      if((o.cads || []).some(c => c.name === f.name)){ b2(); continue; }
+      const cad = await readCad(f);
+      if(cad.segs.length < 64) throw new Error('casi sin líneas');
+      const id = 'cad_' + uid();
+      await DB.put('pdfs', id, {segs: new Float32Array(cad.segs), units: cad.units});
+      o.cads = (o.cads || []).concat([{id, name: f.name, units: cad.units, n: cad.segs.length / 4}]);
+      await DB.put('notes', o.id, o); ok++;
+    } catch(e){ console.error(e); bad.push(f.name); }
+    b2();
+  }
+  await refreshLib();
+  toast(ok + (ok === 1 ? ' CAD de referencia añadido' : ' CAD de referencia añadidos') + (bad.length ? ' · no se pudieron leer: ' + bad.join(', ') : ''), 4500);
+  return ok > 0;
 }
 async function loadCadRef(ref){ const d = await DB.get('pdfs', ref.id); if(!d) throw new Error('Falta el CAD de referencia; vuelve a añadirlo'); return {segs: d.segs, units: d.units}; }
 function cadRefsSheet(o){
@@ -1832,7 +1841,7 @@ function cadRefsSheet(o){
     sh.append(h('h2',{}, 'CAD de referencia · ' + o.name),
       h('p',{}, 'Un DWG o DXF con la base de la obra (por ejemplo, una planta de arquitectura). La app lo compara con cada plano para sacar su escala, aunque sea de otra lámina, siempre que use la misma base. Si la obra tiene varias zonas, añade uno por zona.'),
       (o.cads || []).length ? list : h('p',{style:'color:var(--muted)'}, 'Todavía no hay ninguno.'),
-      h('button',{class:'btn wide', onclick:async () => { close(); if(await addCadRef(o)) cadRefsSheet(o); }}, svgIcon('i-plus'), 'Añadir DWG o DXF'),
+      h('button',{class:'btn wide', onclick:async () => { close(); if(await addCadRef(o)) cadRefsSheet(o); }}, svgIcon('i-plus'), 'Añadir DWG o DXF (puedes elegir varios)'),
       (o.cads || []).length && plans.length ? h('button',{class:'btn wide pri', style:'margin-top:8px', onclick:() => { close(); bulkCadScale(o); }}, svgIcon('i-scale'), 'Poner escala a los planos de la obra') : '',
       acts(h('button',{class:'btn', onclick:() => close()}, 'Cerrar')));
   });
@@ -2462,7 +2471,7 @@ setInterval(() => { if(E){ const p = currentPage(); if(p !== lastTagPage){ lastT
 (async () => { await DB.open(); refreshLib(); initPdf().catch(()=>{}); })();
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 /* Actualizaciones sin tener que cerrar la app */
-const APP_V = '2026.11.11-17';
+const APP_V = '2026.11.11-18';
 async function checkUpdate(manual){
   try {
     const r = await fetch('index.html?v=' + Date.now(), {cache:'no-store'}); if(!r.ok) throw 0;
