@@ -170,6 +170,8 @@ body.selmode #lib{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
 #selBar .btn{flex:1;justify-content:center;box-shadow:none;background:var(--surface2);padding:0 8px}
 #selBar .btn.danger{background:#c92a2a;color:#fff}
 #selBar .btn:disabled{opacity:.4}
+#updBar{position:fixed;left:12px;right:12px;top:calc(10px + env(safe-area-inset-top));z-index:50;background:#1c1f26;color:#fff;border-radius:14px;padding:10px 10px 10px 16px;display:flex;align-items:center;gap:10px;box-shadow:0 6px 20px rgba(0,0,0,.35);font-weight:600;font-size:14px}
+#updBar span{flex:1}
 #toast{position:fixed;left:50%;bottom:calc(80px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#1c1f26;color:#fff;padding:10px 14px;border-radius:12px;font-size:14px;z-index:40;max-width:calc(100% - 32px);box-shadow:0 6px 20px rgba(0,0,0,.3)}
 .busy{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:rgba(0,0,0,.25);color:#fff;font-weight:600}
 .busy div{background:#1c1f26;padding:14px 18px;border-radius:14px}
@@ -219,7 +221,7 @@ body.selmode #lib{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
   <div id="recent"></div>
   <div class="grid" id="grid"></div>
   <div class="empty" id="empty" hidden><b>Aún no hay planos</b>Crea una obra con «+ Obra» e importa sus planos en PDF (puedes seleccionar muchos a la vez). Se clasifican solos por zona e instalación según el nombre del archivo.</div>
-  <div class="foot">Las notas se guardan en este dispositivo.<br><button class="linkbtn" id="bSpace">Espacio ocupado…</button></div>
+  <div class="foot">Las notas se guardan en este dispositivo.<br><button class="linkbtn" id="bSpace">Espacio ocupado…</button><br><button class="linkbtn" id="bVer" style="margin-top:6px">Buscar actualización</button></div>
   <input type="file" id="reIn" accept="application/pdf,.pdf" hidden>
   <div id="selBar" hidden>
     <div class="cnt"><button class="linkbtn" id="sCancel" style="margin-left:0;color:var(--ink)">✕</button><span id="sCount">0 seleccionados</span><button class="linkbtn" id="sAll">Seleccionar todos</button></div>
@@ -2078,6 +2080,24 @@ let lastTagPage = -1;
 setInterval(() => { if(E){ const p = currentPage(); if(p !== lastTagPage){ lastTagPage = p; updScaleTag(); } } }, 300);
 (async () => { await DB.open(); refreshLib(); initPdf().catch(()=>{}); })();
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
+/* Actualizaciones sin tener que cerrar la app */
+const APP_V = '2026.11.11-7';
+async function checkUpdate(manual){
+  try {
+    const r = await fetch('index.html?v=' + Date.now(), {cache:'no-store'}); if(!r.ok) throw 0;
+    const m = (await r.text()).match(/const APP_V = '([^']+)'/);
+    if(m && m[1] !== APP_V){ showUpdate(); return true; }
+    if(manual) toast('Ya tienes la última versión');
+  } catch(e){ if(manual) toast('Sin conexión: no se pudo comprobar'); }
+  return false;
+}
+function showUpdate(){
+  if($('#updBar')) return;
+  const bar = h('div',{id:'updBar'}, h('span',{}, 'Hay una versión nueva de la app'), h('button',{class:'btn pri', onclick:() => location.reload()}, 'Actualizar'));
+  document.body.appendChild(bar);
+}
+window.addEventListener('load', () => { setTimeout(() => checkUpdate(false), 1500); const vb = $('#bVer'); if(vb){ vb.textContent = 'Versión ' + APP_V + ' · Buscar actualización'; vb.onclick = () => checkUpdate(true); } });
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible') checkUpdate(false); });
 // Pedir almacenamiento persistente para que el sistema no borre las notas
 if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
 })();
