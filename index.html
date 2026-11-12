@@ -3367,6 +3367,7 @@ function actaMenu(){
     h('button',{onclick:() => { close(); exportActaFile(a); }}, svgIcon('i-share'), 'Pasar a otro dispositivo (tablet, móvil…)'),
     h('button',{onclick:() => { close(); sendToClaude(a); }}, svgIcon('i-share'), 'Pasar a Claude para redactar'),
     h('button',{onclick:() => { close(); pasteClaude(a); }}, svgIcon('i-plus'), 'Pegar respuesta de Claude'),
+    (a.pts || []).some(p => p.ia) ? h('button',{onclick:async () => { close(); const n = a.pts.filter(p => p.ia).length; if(await confirmSheet('Quitar puntos de Claude', 'Se quitan los ' + n + ' puntos con la etiqueta «Claude».', 'Quitar')){ a.pts = a.pts.filter(p => !p.ia); actaSave(); renderActa(); toast(n + ' puntos quitados', 3000); } }}, svgIcon('i-trash'), 'Quitar los puntos añadidos por Claude (' + a.pts.filter(p => p.ia).length + ')') : '',
     h('button',{onclick:async () => { close(); if(await confirmSheet('Eliminar acta', 'Se borra el acta Nº' + a.num + ' de este móvil. Los Word ya generados no se tocan.', 'Eliminar')){ actas = actas.filter(x => x !== a); await DB.del('notes', a.id); A = null; await closeActa(); gcActaImgs(); } }}, svgIcon('i-trash'), 'Eliminar acta')),
     acts(h('button',{class:'btn', onclick:() => close()}, 'Cerrar'))));
 }
@@ -3492,6 +3493,17 @@ function claudePrompt(a){
   lines.push('');
   if((a.trans || '').trim()){ lines.push('TRANSCRIPCIÓN (automática, puede tener errores; varias personas hablando):'); lines.push(a.trans.trim()); lines.push(''); }
   lines.push('INSTRUCCIONES:');
+  if(!(a.trans || '').trim()){
+    // Pasar a limpio: reescribir los puntos [nuevo], sin añadir ni tocar los pendientes
+    lines.push('- Reescribe SOLO los puntos marcados [nuevo]: corrige erratas, ortografía y redacción con estilo de acta de obra (frases cortas, impersonales y concretas).');
+    lines.push('- No cambies el contenido, no añadas información, no unas ni dividas puntos y no propongas puntos nuevos. No toques los puntos [pendiente].');
+    lines.push('- Si el responsable está mal escrito, corrígelo en MAYÚSCULAS (por ejemplo NORDÉS ANCÍN, COTECNO); si no, déjalo igual.');
+    lines.push('- Incluye solo los puntos que cambies. Contesta SOLO con un bloque de código JSON, sin nada más, con este formato exacto:');
+    lines.push('```json');
+    lines.push('{"reescritos":[{"n":"15","texto":"…","responsable":"EMPRESA"}]}');
+    lines.push('```');
+    return lines.join('\n');
+  }
   lines.push('- Para cada punto ya existente del que se haya hablado, di si queda resuelto o sigue pendiente, y si hace falta añadir algo (una frase corta).');
   lines.push('- Propón los puntos nuevos que salgan de la reunión. Redacta en estilo de acta de obra: frases cortas, impersonales y concretas (qué hay que hacer, dónde y quién), sin nombres de personas, con el responsable como EMPRESA en mayúsculas (usa las empresas de los asistentes o TODOS).');
   lines.push('- No inventes nada que no esté en la transcripción. Si algo es dudoso, márcalo con (?) al final.');
@@ -3518,7 +3530,8 @@ function parseClaude(txt){
   const o = JSON.parse(s);
   const ex = (o.existentes || o.pendientes || []).map(x => ({n: String(x.n || '').replace(/\D/g, ''), estado: String(x.estado || '').toLowerCase(), add: (x.anadir || x['añadir'] || x.comentario || '').trim()})).filter(x => x.n);
   const nu = (o.nuevos || []).map(x => ({text: String(x.texto || x.text || '').trim(), resp: String(x.responsable || '').trim(), plazo: String(x.plazo || '').trim()})).filter(x => x.text);
-  return {ex, nu};
+  const re = (o.reescritos || []).map(x => ({n: String(x.n || '').replace(/\D/g, ''), text: String(x.texto || x.text || '').trim(), resp: String(x.responsable || '').trim()})).filter(x => x.n && x.text);
+  return {ex, nu, re};
 }
 async function pasteClaude(a){
   let txt = ''; try { txt = await navigator.clipboard.readText(); } catch(e){}
@@ -3533,13 +3546,17 @@ async function pasteClaude(a){
   for(const x of R.ex){ const p = ord[+x.n - 1]; if(!p) continue; const res = /resuel/.test(x.estado);
     if(res === !!p.res && !x.add) continue;
     props.push({on:true, label: pad2(+x.n) + (res !== !!p.res ? (res ? ' → Resuelto' : ' → Sigue pendiente') : '') + (x.add ? ' · añadir: ' + x.add : ''), apply: () => { if(p.pend || res) p.res = res; if(x.add) p.text = (p.text || '').trimEnd() + '\n' + x.add; }}); }
-  for(const x of R.nu) props.push({on:true, label:'Nuevo · ' + (x.resp || 'sin responsable') + ' · ' + x.text, apply: () => a.pts.push({id:uid(), text:x.text, resp:x.resp.toUpperCase(), plazo:x.plazo, imgs:[], pend:false, res:false, ia:true})});
+  for(const x of R.re){ const p = ord[+x.n - 1]; if(!p) continue;
+    const resp = x.resp ? x.resp.toUpperCase() : p.resp;
+    if(x.text === (p.text || '').trim() && resp === p.resp) continue;
+    props.push({on:true, label: pad2(+x.n) + ' · ' + (resp || 'sin responsable') + ' · ' + x.text, apply: () => { p.text = x.text; p.resp = resp; }}); }
+  for(const x of R.nu) props.push({on:!R.re.length, label:'Nuevo · ' + (x.resp || 'sin responsable') + ' · ' + x.text, apply: () => a.pts.push({id:uid(), text:x.text, resp:x.resp.toUpperCase(), plazo:x.plazo, imgs:[], pend:false, res:false, ia:true})});
   if(!props.length){ toast('Claude no propone cambios', 4000); return; }
   sheet((sh, close) => {
     const list = h('div',{class:'menu', style:'max-height:56vh;overflow:auto'});
     for(const pr of props){ const cb = h('input',{type:'checkbox', checked:true, style:'width:20px;height:20px;flex:none', onchange:() => pr.on = cb.checked});
       list.append(h('label',{style:'display:flex;gap:10px;align-items:flex-start;padding:10px 4px;font-size:14px;line-height:1.35'}, cb, h('span',{style:'overflow-wrap:anywhere'}, pr.label))); }
-    sh.append(h('h2',{}, 'Propuesta de Claude (' + props.length + ')'), h('p',{}, 'Desmarca lo que no quieras. Después puedes editar cada punto.'), list,
+    sh.append(h('h2',{}, 'Propuesta de Claude (' + props.length + ')'), h('p',{}, R.re.length ? 'Cada punto marcado sustituye su texto por el de Claude. Desmarca los que no quieras.' : 'Desmarca lo que no quieras. Después puedes editar cada punto.'), list,
       acts(h('button',{class:'btn', onclick:() => close()}, 'Cancelar'),
         h('button',{class:'btn pri', onclick:() => { let n = 0; for(const pr of props) if(pr.on){ pr.apply(); n++; } actaSave(); close(); renderActa(); toast(n + ' cambios añadidos al acta', 3500); }}, 'Añadir al acta')));
   });
@@ -3774,7 +3791,7 @@ async function exportActa(){
 (async () => { await DB.open(); if(MS_ON) await msHandleRedirect(); refreshLib(); initPdf().catch(()=>{}); handleShared().catch(e => console.error(e)); })();
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 /* Actualizaciones sin tener que cerrar la app */
-const APP_V = '2026.11.12-9';
+const APP_V = '2026.11.12-10';
 async function checkUpdate(manual){
   try {
     const r = await fetch('index.html?v=' + Date.now(), {cache:'no-store'}); if(!r.ok) throw 0;
