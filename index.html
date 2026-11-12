@@ -3679,8 +3679,8 @@ async function exportActaFile(a){
     });
   } catch(e){ b(); console.error(e); toast('No se pudo preparar: ' + (e.message || e), 6000); }
 }
-async function importActaFile(target){
-  const f = await new Promise(res => { const inp = h('input',{type:'file', accept:'.pdf,.zip,application/pdf,application/zip', hidden:true});
+async function importActaFile(target, given){
+  const f = given || await new Promise(res => { const inp = h('input',{type:'file', accept:'.pdf,.zip,application/pdf,application/zip', hidden:true});
     inp.onchange = () => { res(inp.files[0] || null); inp.remove(); }; document.body.appendChild(inp); inp.click(); });
   if(!f) return;
   const b = busy('Leyendo el acta…'); let files, meta;
@@ -3692,7 +3692,7 @@ async function importActaFile(target){
     }
     files = await docxOpen(bytes); meta = JSON.parse(u8txt(files.get('acta.json') || new Uint8Array()));
     if(meta.tipo !== 'notas-obra-acta' || !meta.acta) throw 0; }
-  catch(e){ b(); toast('Ese archivo no es un acta pasada desde Notas de obra', 5000); return; }
+  catch(e){ b(); toast('Ese archivo no es un acta pasada desde Notas de obra', 5000); return false; }
   b();
   // obra: la del mismo nombre; si no existe, la elegida o una nueva
   let o = obras.find(x => normTxt(x.name) === normTxt(meta.obra));
@@ -3727,6 +3727,39 @@ async function importActaFile(target){
   } catch(e){ b2(); console.error(e); toast('No se pudo importar: ' + (e.message || e), 6000); }
 }
 
+
+/* ---------- Archivos recibidos desde «Compartir» de Android (Quick Share, WhatsApp, correo…) ---------- */
+async function isActaFile(f){
+  const u = new Uint8Array(await f.slice(0, 5).arrayBuffer());
+  if(u[0] === 0x50 && u[1] === 0x4b) return true; // ZIP de traspaso
+  if(!(u[0] === 0x25 && u[1] === 0x50)) return false;
+  try { const pdf = await loadPdf(await f.arrayBuffer()); const att = await pdf.getAttachments(); try { pdf.destroy(); } catch(e){}
+    return !!(att && Object.values(att).some(x => /acta-notas-obra\.zip$/i.test(x.filename || ''))); } catch(e){ return false; }
+}
+async function handleShared(){
+  if(!new URLSearchParams(location.search).has('compartido')) return;
+  history.replaceState(null, '', location.pathname);
+  let files = [];
+  try { const c = await caches.open('notas-obra-compartidos');
+    for(const k of await c.keys()){ const r = await c.match(k); const b = await r.blob(); files.push(new File([b], decodeURIComponent(r.headers.get('X-Nombre') || 'archivo.pdf'), {type: b.type})); await c.delete(k); } } catch(e){}
+  if(!files.length){ toast('No ha llegado ningún archivo', 4000); return; }
+  await refreshLib();
+  const planos = [];
+  for(const f of files){ if(await isActaFile(f)) await importActaFile(obras.find(x => x.id === curObra) || null, f); else if(/\.pdf$/i.test(f.name) || f.type === 'application/pdf') planos.push(f); }
+  if(!planos.length) return;
+  const target = await sheet((sh, close) => {
+    const list = h('div',{class:'menu', style:'max-height:46vh;overflow:auto'});
+    for(const o of obras) list.append(h('button',{onclick:() => close(o.id)}, o.name));
+    list.append(h('button',{onclick:() => close('')}, h('i',{}, 'Sin obra')));
+    sh.append(h('h2',{}, planos.length === 1 ? 'Importar plano' : 'Importar ' + planos.length + ' planos'),
+      h('p',{style:'overflow-wrap:anywhere'}, planos.map(f => f.name).slice(0, 4).join(' · ') + (planos.length > 4 ? '…' : '')),
+      h('p',{}, '¿En qué obra?'), list, acts(h('button',{class:'btn', onclick:() => close(null)}, 'Cancelar')));
+  });
+  if(target === null) return;
+  if(target) selObra(target);
+  await startImport(planos, target || null);
+}
+
 /* ---------- Generar y compartir el Word ---------- */
 async function exportActa(){
   const a = A; const o = obras.find(x => x.id === a.obra);
@@ -3745,10 +3778,10 @@ async function exportActa(){
   });
 }
 
-(async () => { await DB.open(); if(MS_ON) await msHandleRedirect(); refreshLib(); initPdf().catch(()=>{}); })();
+(async () => { await DB.open(); if(MS_ON) await msHandleRedirect(); refreshLib(); initPdf().catch(()=>{}); handleShared().catch(e => console.error(e)); })();
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 /* Actualizaciones sin tener que cerrar la app */
-const APP_V = '2026.11.12-6';
+const APP_V = '2026.11.12-7';
 async function checkUpdate(manual){
   try {
     const r = await fetch('index.html?v=' + Date.now(), {cache:'no-store'}); if(!r.ok) throw 0;
