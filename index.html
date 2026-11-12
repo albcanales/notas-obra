@@ -266,6 +266,7 @@ body.selmode #lib{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
     <symbol id="i-text" viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></symbol>
     <symbol id="i-len" viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></symbol>
     <symbol id="i-poly" viewBox="0 0 24 24"><circle cx="4" cy="18" r="1.8"/><circle cx="10" cy="7" r="1.8"/><circle cx="15" cy="15" r="1.8"/><circle cx="20" cy="5" r="1.8"/><path d="M5 16.4L9 8.6M11.2 8.6l2.6 4.8M16 13.4l3-6.8"/></symbol>
+    <symbol id="i-circ" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="currentColor" fill-opacity=".15"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M12 12h8.5"/></symbol>
     <symbol id="i-area" viewBox="0 0 24 24"><path d="M4 7l7-3 9 5-3 11H6z" fill="currentColor" fill-opacity=".15"/></symbol>
     <symbol id="i-scale" viewBox="0 0 24 24"><path d="M3 8h18v8H3z"/><path d="M7 8v3M11 8v4M15 8v3M19 8v4"/></symbol>
     <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01" stroke-width="3"/></symbol>
@@ -334,6 +335,7 @@ body.selmode #lib{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
     <button class="ib" data-tool="len" title="Medir longitud"><svg class="i"><use href="#i-len"/></svg></button>
     <button class="ib" data-tool="poly" title="Medir recorrido"><svg class="i"><use href="#i-poly"/></svg></button>
     <button class="ib" data-tool="area" title="Medir área"><svg class="i"><use href="#i-area"/></svg></button>
+    <button class="ib" data-tool="circ" title="Radio / cobertura (vuelve a tocar para fijar el radio)"><svg class="i"><use href="#i-circ"/></svg></button>
     <button class="ib" id="tScale" title="Escala"><svg class="i"><use href="#i-scale"/></svg></button>
     <span class="sep"></span>
     <button class="ib" id="tFit" title="Ajustar al ancho"><svg class="i"><use href="#i-fit"/></svg></button>
@@ -367,8 +369,8 @@ const $ = s => document.querySelector(s);
 const PT_MM = 25.4 / 72;
 const COLORS = ['#1c1f26','#e03131','#1971c2','#2f9e44','#f08c00','#9c36b5','#868e96','#ffffff'];
 const HL_COLORS = ['#ffd43b','#69db7c','#74c0fc','#ffa8a8','#e599f7','#ffc078','#ced4da','#63e6be'];
-const MCOL = {len:'#d9480f', poly:'#1971c2', area:'#2f9e44', cal:'#9c36b5'};
-const MNAME = {len:'Longitud', poly:'Recorrido', area:'Área'};
+const MCOL = {len:'#d9480f', poly:'#1971c2', area:'#2f9e44', cal:'#9c36b5', circ:'#e8590c'};
+const MNAME = {len:'Longitud', poly:'Recorrido', area:'Área', circ:'Radio'};
 const nf = (v, d=2) => v.toLocaleString('es-ES',{minimumFractionDigits:d, maximumFractionDigits:d});
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,8);
 
@@ -1459,6 +1461,15 @@ function drawItems(c, pi, z){
 function drawMeasure(c, m, z, draft){
   const P = m.p; if(!P.length) return;
   const col = MCOL[m.k];
+  if(m.k === 'circ'){ // círculo de cobertura: centro, radio y relleno suave
+    const [o, e] = P; c.save(); c.strokeStyle = col; c.fillStyle = col; c.lineWidth = 2/z;
+    if(e){ const r = Math.hypot(e[0]-o[0], e[1]-o[1]);
+      c.save(); c.globalAlpha = 0.12; c.beginPath(); c.arc(o[0], o[1], r, 0, Math.PI*2); c.fill(); c.restore();
+      if(draft) c.setLineDash([6/z, 4/z]); c.beginPath(); c.arc(o[0], o[1], r, 0, Math.PI*2); c.stroke();
+      c.setLineDash([4/z, 3/z]); c.lineWidth = 1.4/z; c.beginPath(); c.moveTo(o[0], o[1]); c.lineTo(e[0], e[1]); c.stroke(); c.setLineDash([]); }
+    c.beginPath(); c.arc(o[0], o[1], 3.6/z, 0, Math.PI*2); c.fill();
+    c.restore(); return;
+  }
   c.save(); c.strokeStyle = col; c.fillStyle = col; c.lineWidth = 2/z; c.lineCap='round'; c.lineJoin='round';
   if(m.k === 'area' && P.length > 2){ c.save(); c.globalAlpha = 0.16; c.beginPath(); P.forEach((q,k)=>k?c.lineTo(q[0],q[1]):c.moveTo(q[0],q[1])); c.closePath(); c.fill(); c.restore(); }
   if(draft) c.setLineDash([6/z, 4/z]);
@@ -1483,6 +1494,7 @@ function measureText(m, pi){
     return nf(polyArea(m.p)*k*k) + ' m²  ·  P ' + nf(per) + ' m';
   }
   if(m.p.length < 2) return '';
+  if(m.k === 'circ'){ if(!k) return 'sin escala'; const R = polyLen(m.p)*k; return 'R ' + nf(R) + ' m  ·  ' + nf(Math.PI*R*R) + ' m²'; }
   if(m.k === 'cal') return 'calibrar';
   if(!k) return 'sin escala';
   return (m.k==='poly' ? 'Σ ' : '') + nf(polyLen(m.p)*k) + ' m';
@@ -1494,6 +1506,7 @@ function measureValue(m, pi){
 function labelAnchor(m){
   const P = m.p;
   if(m.k === 'area'){ let x=0,y=0; P.forEach(q=>{x+=q[0];y+=q[1];}); return [x/P.length, y/P.length]; }
+  if(m.k === 'circ') return P[0];
   if(P.length === 2) return [(P[0][0]+P[1][0])/2, (P[0][1]+P[1][1])/2];
   let best=1, bl=0; for(let i=1;i<P.length;i++){ const l=Math.hypot(P[i][0]-P[i-1][0],P[i][1]-P[i-1][1]); if(l>bl){bl=l;best=i;} }
   return [(P[best][0]+P[best-1][0])/2, (P[best][1]+P[best-1][1])/2];
@@ -1513,7 +1526,7 @@ function drawLabels(c, p, z){
 }
 function draftView(){
   const d = E.mdraft; const P = d.p.slice();
-  if(d.cursor && (d.k==='len'||d.k==='cal' ? P.length < 2 : true)) P.push(d.cursor);
+  if(d.cursor && (['len','cal','circ'].includes(d.k) ? P.length < 2 : true)) P.push(d.cursor);
   return {k:d.k, p:P};
 }
 function drawDraftLabel(c, z){
@@ -1547,15 +1560,34 @@ function setTool(t, fromUser){
   E.tool = t; if(!['cal','cota'].includes(t)) { prefs.lastTool = t; savePrefs(); }
   document.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === t));
   const pt = prefs[t]; $('#tColor').hidden = !pt; if(pt) $('#swatch').style.background = pt.c;
-  if(['len','poly','area'].includes(t)){
+  if(['len','poly','area','circ'].includes(t)){
     const vis = visiblePages(); const pi = vis[0] ?? 0;
     if(fromUser && !E.ann.pages[pi].scale) setTimeout(() => scaleSheet(pi), 50);
+    else if(fromUser && t === 'circ' && !prefs.hintCirc){ prefs.hintCirc = true; savePrefs(); setTimeout(() => circSheet(), 50); }
     else if(fromUser && !prefs.hintMeasure){ prefs.hintMeasure = true; savePrefs(); toast('Toca para poner puntos · arrastra para mover · mantén pulsado para afinar con lupa', 5000); }
   }
 }
 document.querySelectorAll('[data-tool]').forEach(b => b.onclick = () => {
-  if(E.tool === b.dataset.tool && prefs[E.tool]) openPenPop(b); else setTool(b.dataset.tool, true);
+  if(E.tool === 'circ' && b.dataset.tool === 'circ') circSheet();
+  else if(E.tool === b.dataset.tool && prefs[E.tool]) openPenPop(b); else setTool(b.dataset.tool, true);
 });
+/* Radio de cobertura: libre (centro y borde) o fijo (un toque = un círculo) */
+function circSheet(){
+  sheet((sh, close) => {
+    const cur = prefs.circR || 0;
+    const r = h('input',{class:'field', type:'number', inputmode:'decimal', step:'0.01', min:'0', placeholder:'Radio en m'}); if(cur) r.value = cur;
+    const a = h('input',{class:'field', type:'number', inputmode:'decimal', step:'0.1', min:'0', placeholder:'o superficie en m²'}); if(cur) a.value = +(Math.PI*cur*cur).toFixed(1);
+    r.oninput = () => { const v = parseFloat(r.value); a.value = v > 0 ? +(Math.PI*v*v).toFixed(1) : ''; };
+    a.oninput = () => { const v = parseFloat(a.value); r.value = v > 0 ? +Math.sqrt(v/Math.PI).toFixed(2) : ''; };
+    const set = v => { prefs.circR = v; savePrefs(); close(); toast(v ? 'Radio fijo ' + nf(v) + ' m: toca donde va cada detector' : 'Radio libre: toca el centro y luego el borde', 4000); };
+    sh.append(h('h2',{}, 'Radio de cobertura'),
+      h('p',{}, 'Con radio fijo, cada toque en el plano deja un círculo de ese radio (por ejemplo, la cobertura de un detector). Con radio libre, tocas el centro y luego el borde.'),
+      h('div',{class:'agrid2'}, r, a),
+      h('div',{class:'chips', style:'margin-top:10px'}, ...[3, 5, 5.3, 6.5, 7.5, 9].map(v => chipBtn(nf(v) + ' m', v === cur, () => { r.value = v; r.oninput(); }))),
+      acts(h('button',{class:'btn', onclick:() => set(0)}, 'Radio libre'),
+        h('button',{class:'btn pri', onclick:() => { const v = parseFloat(String(r.value).replace(',', '.')); if(!(v > 0)){ toast('Pon un radio mayor que 0'); return; } set(+v.toFixed(3)); }}, 'Usar radio fijo')));
+  });
+}
 $('#tColor').onclick = () => openPenPop($('#tColor'));
 function openPenPop(anchor){
   const t = E.tool, pt = prefs[t]; if(!pt) return;
@@ -1630,7 +1662,7 @@ view.addEventListener('pointerdown', e => {
   if(gesture && gesture.mode === 'draw' && ptrs.size > 1 && gesture.type === 'touch'){ abortDraw(); }
   if(gesture && gesture.mode === 'draw') return;
   if(E.tool === 'hand' || touchNav || e.button === 1 || (gesture && gesture.mode === 'nav')){ startNav(); return; }
-  if(['len','poly','area','cal','cota','foto'].includes(E.tool) && e.pointerType === 'touch'){
+  if(['len','poly','area','circ','cal','cota','foto'].includes(E.tool) && e.pointerType === 'touch'){
     // tocar = punto · arrastrar = mover · mantener = afinar con lupa
     const pend = {mode:'pending', id:e.pointerId, s, ev:e};
     pend.timer = setTimeout(() => { if(gesture === pend){ gesture = null; startDraw(pend.ev, ptrs.get(pend.id) ? ptrs.get(pend.id).s : pend.s); requestDraw(); } }, 260);
@@ -1701,7 +1733,7 @@ view.addEventListener('wheel', e => {
 function local(pi, s){ const d = toDoc(s), p = E.pages[pi]; return [d[0]-p.x, d[1]-p.y]; }
 function startDraw(e, s){
   const d = toDoc(s), t = E.tool;
-  const isMeasure = ['len','poly','area','cal'].includes(t);
+  const isMeasure = ['len','poly','area','circ','cal'].includes(t);
   let page = pageAt(d, isMeasure ? 0 : 0);
   if(isMeasure && E.mdraft) page = E.pages[E.mdraft.pi];
   if(!page){ startNav(); return; }
@@ -1768,7 +1800,12 @@ async function endDraw(e, cancelled){
     if(d.k === 'area' && d.p.length >= 3){ const f = d.p[0]; if(Math.hypot(L[0]-f[0], L[1]-f[1]) * E.cam.z < 16){ finishDraft(); return; } }
     d.p.push([+L[0].toFixed(2), +L[1].toFixed(2)]);
     d.cursor = e.pointerType === 'touch' ? null : L;
-    if((d.k === 'len' || d.k === 'cal') && d.p.length === 2) finishDraft();
+    if(d.k === 'circ' && d.p.length === 1 && prefs.circR > 0){
+      const sc = E.ann.pages[d.pi].scale;
+      if(!sc){ cancelDraft(); scaleSheet(d.pi); return; }
+      const rPt = prefs.circR * 1000 / sc.mmPerPt; d.p.push([+(d.p[0][0] + rPt).toFixed(2), d.p[0][1]]); finishDraft();
+    }
+    else if((d.k === 'len' || d.k === 'cal' || d.k === 'circ') && d.p.length === 2) finishDraft();
     else updMbar();
   }
   requestDraw();
@@ -1778,7 +1815,7 @@ function eraseAt(pi, L){
   const hitSeg = (P, step, rad) => { for(let i=0;i<P.length;i+=step){ const j = i+step < P.length ? i+step : i; if(segDist(L, [P[i],P[i+1]], [P[j],P[j+1]]) <= rad) return true; } return false; };
   const del = (list, item) => { const idx = pg[list].indexOf(item); if(idx<0) return; pg[list].splice(idx,1); g.removed.push({pi, list, item, idx}); };
   [...pg.strokes].forEach(s => { if(hitSeg(s.p, 3, r + s.w/2)) del('strokes', s); });
-  [...pg.measures].forEach(m => { const flat = m.p.flat(); const P2 = m.k==='area' ? flat.concat(m.p[0]) : flat; if(hitSeg(P2, 2, r)) del('measures', m); });
+  [...pg.measures].forEach(m => { if(m.k === 'circ'){ const o = m.p[0], R = polyLen(m.p), dd = Math.hypot(L[0]-o[0], L[1]-o[1]); if(Math.abs(dd - R) <= r || dd <= r) del('measures', m); return; } const flat = m.p.flat(); const P2 = m.k==='area' ? flat.concat(m.p[0]) : flat; if(hitSeg(P2, 2, r)) del('measures', m); });
   [...(pg.photos||[])].forEach(ph => { if(Math.hypot(L[0]-ph.x, L[1]-ph.y + 16/E.cam.z) < 16/E.cam.z) del('photos', ph); });
   [...pg.texts].forEach(t => { ctx.font = `${t.s}px system-ui`; const lines = t.txt.split('\n'); const w = Math.max(...lines.map(l=>ctx.measureText(l).width)); if(L[0] >= t.x - r && L[0] <= t.x + w + r && L[1] >= t.y - r && L[1] <= t.y + lines.length*t.s*1.25 + r) del('texts', t); });
   requestDraw();
@@ -1792,7 +1829,7 @@ function segDist(p, a, b){
 /* ---------- Medición ---------- */
 function updMbar(){
   const d = E.mdraft, bar = $('#mbar');
-  if(!d || !d.p.length || d.k === 'len' || d.k === 'cal'){ bar.hidden = true; return; }
+  if(!d || !d.p.length || d.k === 'len' || d.k === 'cal' || d.k === 'circ'){ bar.hidden = true; return; }
   bar.hidden = false;
   $('#mbarTx').textContent = (d.k === 'area' ? 'Área' : 'Recorrido') + ' · ' + d.p.length + (d.p.length===1?' punto':' puntos');
   $('#mDone').disabled = d.p.length < (d.k === 'area' ? 3 : 2);
@@ -2724,17 +2761,17 @@ $('#eList').onclick = () => {
     const rows = []; let sumL = 0, sumA = 0, noScale = 0;
     E.ann.pages.forEach((pg, pi) => pg.measures.forEach(m => {
       const v = measureValue(m, pi);
-      if(v == null) noScale++; else if(m.k === 'area') sumA += v; else sumL += v;
+      if(v == null) noScale++; else if(m.k === 'area') sumA += v; else if(m.k !== 'circ') sumL += v;
       rows.push({m, pi, v});
     }));
     sh.append(h('h2',{}, 'Medidas'));
-    if(!rows.length){ sh.append(h('p',{}, 'Aún no hay medidas. Usa las herramientas de longitud, recorrido o área.')); }
+    if(!rows.length){ sh.append(h('p',{}, 'Aún no hay medidas. Usa las herramientas de longitud, recorrido, área o radio.')); }
     else {
       sh.append(h('div',{class:'tot'}, h('div',{}, h('span',{},'Longitudes'), h('b',{}, nf(sumL) + ' m')), h('div',{}, h('span',{},'Áreas'), h('b',{}, nf(sumA) + ' m²'))));
       if(noScale) sh.append(h('p',{}, noScale + ' medida(s) en páginas sin escala no se suman.'));
       const ul = h('ul',{class:'mlist'});
       rows.forEach(({m, pi, v}, k) => {
-        const val = v == null ? 'sin escala' : nf(v) + (m.k==='area' ? ' m²' : ' m');
+        const val = v == null ? 'sin escala' : m.k === 'circ' ? 'R ' + nf(v) + ' m · ' + nf(Math.PI*v*v) + ' m²' : nf(v) + (m.k==='area' ? ' m²' : ' m');
         const del = h('button',{class:'ib', title:'Borrar', onclick:() => { const L = E.ann.pages[pi].measures; const idx = L.indexOf(m); L.splice(idx,1); pushOp({k:'del', items:[{pi, list:'measures', item:m, idx}]}); li.remove(); }}, svgIcon('i-trash'));
         const li = h('li',{}, h('span',{class:'dot', style:'background:' + MCOL[m.k]}),
           h('button',{class:'tx', onclick:() => { close(); goTo(m, pi); }}, h('b',{}, val), h('span',{}, MNAME[m.k] + ' · pág. ' + (pi+1) + ' · nº ' + (k+1))), del);
@@ -2840,6 +2877,14 @@ async function buildPdf(){
       const col = hexRgb(MCOL[m.k]);
       const sc = Math.max(E.meta.pages[i].w, E.meta.pages[i].h) / 842;   // grosor proporcional al tamaño del plano
       if(m.k === 'area' && m.p.length > 2) pg.drawSvgPath(path(m.p) + ' Z', {x:0, y:0, color:col, opacity:0.16, borderWidth:0});
+      if(m.k === 'circ' && m.p.length === 2){
+        const [o] = m.p, R = polyLen(m.p), cp = Array.from({length:73}, (_, j) => [o[0] + R*Math.cos(j*Math.PI/36), o[1] + R*Math.sin(j*Math.PI/36)]);
+        pg.drawSvgPath(path(cp) + ' Z', {x:0, y:0, color:col, opacity:0.12, borderWidth:0});
+        pg.drawSvgPath(path(cp), {x:0, y:0, borderColor:col, borderWidth:1.1*sc, borderLineCap:LineCapStyle.Round});
+        pg.drawSvgPath(path(m.p), {x:0, y:0, borderColor:col, borderWidth:0.7*sc, borderDashArray:[3*sc, 2*sc]});
+        const cd = Array.from({length:13}, (_, j) => [o[0] + 1.6*sc*Math.cos(j*Math.PI/6), o[1] + 1.6*sc*Math.sin(j*Math.PI/6)]);
+        pg.drawSvgPath(path(cd) + ' Z', {x:0, y:0, color:col, borderWidth:0});
+      } else
       pg.drawSvgPath(path(m.k==='area' ? m.p.concat([m.p[0]]) : m.p), {x:0, y:0, borderColor:col, borderWidth:1.1*sc, borderLineCap:LineCapStyle.Round});
       const txt = safe(fontB, measureText(m, i).replace('Σ ', 'Total ')); if(!txt) continue;
       const a = labelAnchor(m), size = 7.5*sc, tw = fontB.widthOfTextAtSize(txt, size);
@@ -3384,7 +3429,7 @@ async function exportActa(){
 (async () => { await DB.open(); if(MS_ON) await msHandleRedirect(); refreshLib(); initPdf().catch(()=>{}); })();
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 /* Actualizaciones sin tener que cerrar la app */
-const APP_V = '2026.11.11-23';
+const APP_V = '2026.11.12-1';
 async function checkUpdate(manual){
   try {
     const r = await fetch('index.html?v=' + Date.now(), {cache:'no-store'}); if(!r.ok) throw 0;
