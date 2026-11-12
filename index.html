@@ -3269,6 +3269,11 @@ async function loadActaTpl(o){
     await DB.put('pdfs', id, bytes);
     o.actaTpl = {id, name: f.name}; o.actaBase = base; await DB.put('notes', o.id, o);
     d(); toast('Plantilla cargada: acta Nº' + base.num + ' con ' + base.pts.length + ' puntos y ' + base.asis.length + ' filas de asistentes', 5000);
+    // las actas nuevas copian los asistentes del acta anterior: ofrecer pasar los de la plantilla a la última
+    const last = actas.filter(x => x.obra === o.id).sort((x, y) => y.num - x.num || y.created - x.created)[0];
+    if(last && base.asis.length && await confirmSheet('Asistentes de la plantilla', 'La plantilla nueva tiene estos asistentes: ' + base.asis.map(x => (x.nom || '').trim() + (x.emp ? ' (' + x.emp + ')' : '')).join(' · ') + '. ¿Los pongo también en el acta Nº' + last.num + '? Las actas siguientes los copiarán de ella.', 'Sí, ponerlos', 'pri')){
+      last.asis = base.asis.map(x => ({...x})); last.updated = Date.now(); await DB.put('notes', last.id, last); toast('Asistentes actualizados en el acta Nº' + last.num, 3500);
+    }
     return true;
   } catch(e){ d(); console.error(e); toast(e.message || 'No se pudo leer el Word', 6000); return false; }
 }
@@ -3769,7 +3774,7 @@ async function exportActa(){
 (async () => { await DB.open(); if(MS_ON) await msHandleRedirect(); refreshLib(); initPdf().catch(()=>{}); handleShared().catch(e => console.error(e)); })();
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 /* Actualizaciones sin tener que cerrar la app */
-const APP_V = '2026.11.12-8';
+const APP_V = '2026.11.12-9';
 async function checkUpdate(manual){
   try {
     const r = await fetch('index.html?v=' + Date.now(), {cache:'no-store'}); if(!r.ok) throw 0;
