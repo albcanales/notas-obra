@@ -197,6 +197,18 @@ body.selmode #lib{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
 .arow .rol{color:var(--muted);font-weight:600}
 .arow .nom{overflow-wrap:anywhere}
 .arow.mk .rol,.arow.mk .nom,.arow.mk .emp{background:color-mix(in srgb, #ffd43b 45%, transparent);border-radius:4px}
+.areuh{display:flex;align-items:baseline;gap:8px}
+.areuh b{font-size:14.5px}
+.areuh small{color:var(--muted);font-size:12.5px}
+.areu .abtns .btn{min-width:0;flex:1 1 40%;font-size:13.5px}
+.areu .btn.danger{background:#c92a2a;color:#fff;border-color:transparent}
+.lsbar{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:8px;background:#c92a2a;color:#fff;border-radius:12px;padding:8px 8px 8px 12px;margin-bottom:10px;box-shadow:var(--shadow)}
+.lsbar[hidden]{display:none}
+.lsbar #lsText{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px;opacity:.95}
+.lsbar .btn{height:32px;background:#fff;color:#c92a2a;box-shadow:none}
+.lsdot{width:10px;height:10px;border-radius:50%;background:#fff;animation:lsb 1.2s infinite}
+@keyframes lsb{50%{opacity:.25}}
+.aia{font-size:11px;font-weight:700;color:#7048e8;border:1px solid #b197fc;border-radius:6px;padding:1px 6px}
 .ah{font-size:14px;margin:16px 2px 8px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
 .apt{background:var(--surface);border-radius:14px;padding:10px 12px;margin-bottom:8px;box-shadow:var(--shadow);cursor:pointer}
 .apt.res{opacity:.6}
@@ -266,6 +278,8 @@ body.selmode #lib{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
     <symbol id="i-text" viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></symbol>
     <symbol id="i-len" viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></symbol>
     <symbol id="i-poly" viewBox="0 0 24 24"><circle cx="4" cy="18" r="1.8"/><circle cx="10" cy="7" r="1.8"/><circle cx="15" cy="15" r="1.8"/><circle cx="20" cy="5" r="1.8"/><path d="M5 16.4L9 8.6M11.2 8.6l2.6 4.8M16 13.4l3-6.8"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
     <symbol id="i-circ" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="currentColor" fill-opacity=".15"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M12 12h8.5"/></symbol>
     <symbol id="i-area" viewBox="0 0 24 24"><path d="M4 7l7-3 9 5-3 11H6z" fill="currentColor" fill-opacity=".15"/></symbol>
     <symbol id="i-scale" viewBox="0 0 24 24"><path d="M3 8h18v8H3z"/><path d="M7 8v3M11 8v4M15 8v3M19 8v4"/></symbol>
@@ -3257,6 +3271,7 @@ function openActa(id){
   $('#lib').hidden = true; $('#acta').hidden = false; window.scrollTo(0, 0); renderActa();
 }
 async function closeActa(){
+  listenStop();
   clearTimeout(aSaveT); if(A) await DB.put('notes', A.id, A);
   A = null; $('#acta').hidden = true; $('#lib').hidden = false; refreshLib(); showRevBar();
 }
@@ -3271,6 +3286,7 @@ function renderActa(){
     h('div',{class:'att'}, h('b',{}, 'Acta Nº' + a.num), sub),
     h('button',{class:'ib', title:'Más', onclick:actaMenu}, svgIcon('i-more'))));
   const body = h('div',{class:'abody'});
+  body.append(h('div',{id:'lsBar', class:'lsbar', hidden:true}, h('span',{class:'lsdot'}), h('b',{id:'lsTime'}, '00:00'), h('span',{id:'lsText'}, 'Escuchando…'), h('button',{class:'btn', onclick:listenStop}, 'Parar')));
   // Datos
   body.append(h('details',{class:'asec'}, h('summary',{}, 'Datos de la visita'),
     h('div',{class:'agrid'}, fld('Nº', (() => { const e = h('input',{class:'field', type:'number', inputmode:'numeric'}); e.value = a.num; e.oninput = () => { a.num = +e.value || a.num; actaSave(); }; return e; })()),
@@ -3283,12 +3299,21 @@ function renderActa(){
   body.append(h('details',{class:'asec'}, h('summary',{}, 'Asistentes (' + (a.asis || []).length + ')'), asis,
     h('button',{class:'linkbtn', onclick:() => editAsis(-1)}, '+ Añadir fila de asistentes')));
   // Puntos
+  // Reunión: escuchar y Claude
+  const nl = (a.trans || '').split('\n').filter(l => /^\[/.test(l)).length;
+  body.append(h('div',{class:'asec areu'},
+    h('div',{class:'areuh'}, h('b',{}, 'Reunión'), h('small',{}, nl ? nl + ' frases transcritas' : 'Sin transcripción')),
+    h('div',{class:'abtns'},
+      LS.on ? h('button',{class:'btn danger', onclick:listenStop}, svgIcon('i-x'), 'Parar') : h('button',{class:'btn', onclick:() => listenStart(a)}, svgIcon('i-mic'), 'Escuchar'),
+      nl ? h('button',{class:'btn', onclick:() => transSheet(a)}, svgIcon('i-text'), 'Ver texto') : '',
+      h('button',{class:'btn', onclick:() => sendToClaude(a)}, svgIcon('i-share'), 'Pasar a Claude'),
+      h('button',{class:'btn', onclick:() => pasteClaude(a)}, svgIcon('i-plus'), 'Pegar respuesta'))));
   const ord = actaOrder(a); const pend = ord.filter(p => p.pend), nuevos = ord.filter(p => !p.pend);
   const card = (p, n) => {
     const th = h('div',{class:'athumbs'});
     for(const im of (p.imgs || []).slice(0, 4)) actaImgUrl(im.k).then(u => { if(u) th.append(h('img',{src:u, alt:''})); });
     return h('div',{class:'apt' + (p.res ? ' res' : ''), onclick:() => editPoint(p)},
-      h('div',{class:'aph'}, h('span',{class:'anum'}, pad2(n)), h('span',{class:'aresp'}, p.resp || 'Sin responsable'), p.plazo ? h('span',{class:'aplazo'}, p.plazo) : '',
+      h('div',{class:'aph'}, h('span',{class:'anum'}, pad2(n)), h('span',{class:'aresp'}, p.resp || 'Sin responsable'), p.ia ? h('span',{class:'aia'}, 'Claude') : '', p.plazo ? h('span',{class:'aplazo'}, p.plazo) : '',
         p.pend ? h('button',{class:'chip' + (p.res ? ' on' : ''), onclick:e => { e.stopPropagation(); p.res = !p.res; actaSave(); renderActa(); }}, p.res ? '✓ Resuelto' : 'Resuelto') : ''),
       h('div',{class:'atx'}, p.text || h('i',{style:'color:var(--muted)'}, 'Sin texto')), (p.imgs || []).length ? th : '');
   };
@@ -3296,6 +3321,7 @@ function renderActa(){
   if(pend.length) body.append(h('h3',{class:'ah'}, 'Pendientes del acta anterior (' + pend.length + ')'), ...pend.map(p => card(p, ++n)));
   body.append(h('h3',{class:'ah'}, 'Puntos nuevos (' + nuevos.length + ')'), ...nuevos.map(p => card(p, ++n)),
     nuevos.length ? '' : h('p',{style:'color:var(--muted);font-size:13px;margin:4px 2px'}, 'Pulsa «Nuevo punto» para añadir lo que se trate en la visita.'));
+  setTimeout(listenUI, 0);
   root.append(body, h('div',{class:'afoot'},
     h('button',{class:'btn', onclick:exportActa}, svgIcon('i-share'), 'Generar Word'),
     h('button',{class:'btn pri', onclick:() => { const p = {id:uid(), text:'', resp:'', plazo:'', imgs:[], pend:false, res:false}; editPoint(p, true); }}, svgIcon('i-plus'), 'Nuevo punto')));
@@ -3352,6 +3378,138 @@ function editPoint(p, isNew){
 // confirmación sin cerrar la ventana de debajo
 function confirmSheetInline(msg){ return new Promise(res => { const b = h('div',{class:'aconf'}, h('span',{}, msg),
   h('button',{class:'btn', onclick:() => { b.remove(); res(false); }}, 'No'), h('button',{class:'btn danger', onclick:() => { b.remove(); res(true); }}, 'Quitar')); document.body.appendChild(b); }); }
+
+/* ---------- Reunión: transcripción en directo y ayuda de Claude (sin clave) ----------
+   1) El reconocimiento de voz del navegador transcribe la reunión y se guarda en el acta.
+   2) «Pasar a Claude» prepara un mensaje (acta + transcripción + instrucciones) para la app de Claude.
+   3) «Pegar respuesta» lee lo que devuelve Claude y deja elegir qué puntos añadir. */
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+const LS = {on:false, rec:null, a:null, t0:0, inter:'', tick:null, wake:null, fails:0};
+const hhmm = d => pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+async function listenStart(a){
+  if(!SpeechRec){ toast('Este navegador no permite transcribir. Usa Chrome en Android.', 5000); return; }
+  if(LS.on) return;
+  if(!prefs.listenOk){
+    const ok = await confirmSheet('Escuchar la reunión', 'El móvil transcribe lo que se dice usando el reconocimiento de voz de Google (necesita conexión; el audio no se guarda). La transcripción se queda en el acta. Deja el móvil en la mesa, con la pantalla encendida.', 'Empezar', 'pri');
+    if(!ok) return; prefs.listenOk = true; savePrefs();
+  }
+  LS.on = true; LS.a = a; LS.t0 = Date.now(); LS.fails = 0; a.trans = a.trans || '';
+  a.trans += (a.trans ? '\n' : '') + '— Inicio de la escucha ' + hhmm(new Date()) + ' —\n';
+  const go = () => {
+    if(!LS.on) return;
+    const r = new SpeechRec(); LS.rec = r; r.lang = 'es-ES'; r.continuous = true; r.interimResults = true;
+    r.onresult = ev => {
+      let fin = '', inter = '';
+      for(let i = ev.resultIndex; i < ev.results.length; i++){ const x = ev.results[i]; if(x.isFinal) fin += x[0].transcript; else inter += x[0].transcript; }
+      LS.fails = 0;
+      if(fin.trim()){ LS.a.trans += '[' + hhmm(new Date()) + '] ' + fin.trim().replace(/^./, c => c.toUpperCase()) + '\n'; DB.put('notes', LS.a.id, LS.a); }
+      LS.inter = inter; listenUI();
+    };
+    r.onerror = ev => {
+      if(ev.error === 'not-allowed' || ev.error === 'service-not-allowed'){ listenStop(); toast('Sin permiso para usar el micrófono', 5000); }
+      else if(ev.error === 'network'){ LS.fails++; if(LS.fails === 3) toast('Sin conexión: la transcripción se reanuda sola cuando vuelva', 5000); }
+    };
+    r.onend = () => { LS.rec = null; if(LS.on) setTimeout(go, LS.fails ? Math.min(5000, 600 * LS.fails) : 200); };
+    try { r.start(); } catch(e){ setTimeout(go, 1000); }
+  };
+  go();
+  try { LS.wake = await navigator.wakeLock.request('screen'); } catch(e){}
+  clearInterval(LS.tick); LS.tick = setInterval(listenUI, 1000); if(A) renderActa(); listenUI();
+}
+function listenStop(){
+  if(!LS.on) return;
+  LS.on = false; clearInterval(LS.tick); try { LS.rec && LS.rec.stop(); } catch(e){}
+  try { LS.wake && LS.wake.release(); } catch(e){} LS.wake = null;
+  if(LS.a){ LS.a.trans += '— Fin de la escucha ' + hhmm(new Date()) + ' —\n'; DB.put('notes', LS.a.id, LS.a); }
+  LS.inter = ''; listenUI(); if(A) renderActa();
+}
+document.addEventListener('visibilitychange', async () => { if(document.visibilityState === 'visible' && LS.on && !LS.wake){ try { LS.wake = await navigator.wakeLock.request('screen'); } catch(e){} } else if(document.visibilityState !== 'visible') LS.wake = null; });
+function listenUI(){
+  const bar = $('#lsBar'); if(!bar) return;
+  bar.hidden = !LS.on; if(!LS.on) return;
+  const s = Math.floor((Date.now() - LS.t0) / 1000);
+  $('#lsTime').textContent = pad2(Math.floor(s / 60)) + ':' + pad2(s % 60);
+  const last = (LS.a.trans || '').trim().split('\n').filter(l => /^\[/.test(l)).slice(-1)[0] || '';
+  $('#lsText').textContent = LS.inter || last.replace(/^\[\d\d:\d\d\]\s*/, '') || 'Escuchando…';
+}
+function transSheet(a){
+  sheet((sh, close) => {
+    const ta = h('textarea',{class:'field ta', style:'min-height:46vh;font-size:13.5px'}); ta.value = a.trans || '';
+    sh.append(h('h2',{}, 'Transcripción de la reunión'), h('p',{}, 'Puedes corregir lo que haya entendido mal antes de pasárselo a Claude.'), ta,
+      acts(h('button',{class:'btn danger', onclick:async () => { close(); if(await confirmSheet('Borrar transcripción', 'Se borra la transcripción de esta acta.', 'Borrar')){ a.trans = ''; actaSave(); renderActa(); } }}, 'Borrar'),
+        h('button',{class:'btn', onclick:() => close()}, 'Cancelar'),
+        h('button',{class:'btn pri', onclick:() => { a.trans = ta.value; actaSave(); close(); renderActa(); }}, 'Guardar')));
+  });
+}
+function claudePrompt(a){
+  const o = obras.find(x => x.id === a.obra) || {name:''};
+  const ord = actaOrder(a);
+  const lines = [];
+  lines.push('Ayúdame a redactar los puntos del acta de obra a partir de la transcripción de la reunión.');
+  lines.push('');
+  lines.push('OBRA: ' + o.name + ' · ACTA Nº' + a.num + ' · ' + fechaVisita(a.fecha) + ' · ' + (a.tema || ''));
+  lines.push('ASISTENTES:'); for(const s of a.asis || []) lines.push('- ' + s.rol + ': ' + s.nom + (s.emp ? ' (' + s.emp + ')' : ''));
+  lines.push('');
+  lines.push('PUNTOS QUE YA ESTÁN EN EL ACTA (los primeros vienen del acta anterior como pendientes):');
+  ord.forEach((p, i) => lines.push(pad2(i + 1) + (p.pend ? ' [pendiente]' : ' [nuevo]') + (p.res ? ' [RESUELTO]' : '') + ' · ' + (p.resp || 'sin responsable') + ' · ' + (p.text || '').replace(/\n+/g, ' / ')));
+  lines.push('');
+  lines.push('TRANSCRIPCIÓN (automática, puede tener errores; varias personas hablando):');
+  lines.push((a.trans || '(sin transcripción)').trim());
+  lines.push('');
+  lines.push('INSTRUCCIONES:');
+  lines.push('- Para cada punto ya existente del que se haya hablado, di si queda resuelto o sigue pendiente, y si hace falta añadir algo (una frase corta).');
+  lines.push('- Propón los puntos nuevos que salgan de la reunión. Redacta en estilo de acta de obra: frases cortas, impersonales y concretas (qué hay que hacer, dónde y quién), sin nombres de personas, con el responsable como EMPRESA en mayúsculas (usa las empresas de los asistentes o TODOS).');
+  lines.push('- No inventes nada que no esté en la transcripción. Si algo es dudoso, márcalo con (?) al final.');
+  lines.push('- Contesta SOLO con un bloque de código JSON, sin nada más, con este formato exacto:');
+  lines.push('```json');
+  lines.push('{"existentes":[{"n":"01","estado":"resuelto|sigue","anadir":"texto a añadir o vacío"}],');
+  lines.push(' "nuevos":[{"texto":"…","responsable":"EMPRESA","plazo":""}]}');
+  lines.push('```');
+  return lines.join('\n');
+}
+async function sendToClaude(a){
+  if(!(a.trans || '').trim() && !(await confirmSheet('Sin transcripción', 'Esta acta no tiene transcripción. ¿Quieres pasar igualmente el acta a Claude?', 'Seguir', 'pri'))) return;
+  const txt = claudePrompt(a);
+  let copied = false; try { await navigator.clipboard.writeText(txt); copied = true; } catch(e){}
+  sheet((sh, close) => sh.append(h('h2',{}, 'Pasar a Claude'),
+    h('p',{}, (copied ? 'He copiado el mensaje. ' : '') + 'Compártelo con la app de Claude (o pégalo en una conversación). Cuando Claude conteste, copia su respuesta entera y pulsa «Pegar respuesta de Claude».'),
+    navigator.share ? h('button',{class:'btn wide pri', onclick:async () => { try { await navigator.share({text: txt, title:'Acta Nº' + a.num}); } catch(e){} }}, svgIcon('i-share'), 'Compartir con la app de Claude') : '',
+    h('button',{class:'btn wide', style:'margin-top:8px', onclick:async () => { try { await navigator.clipboard.writeText(txt); toast('Copiado'); } catch(e){ toast('No se pudo copiar'); } }}, 'Copiar otra vez'),
+    acts(h('button',{class:'btn', onclick:() => close()}, 'Cerrar'), h('button',{class:'btn pri', onclick:() => { close(); pasteClaude(a); }}, 'Pegar respuesta'))));
+}
+function parseClaude(txt){
+  let s = (txt || '').replace(/```(?:json)?/gi, '');
+  const i = s.indexOf('{'), j = s.lastIndexOf('}'); if(i < 0 || j <= i) throw new Error('No encuentro el bloque JSON en la respuesta');
+  s = s.slice(i, j + 1).replace(/[“”]/g, '"').replace(/,\s*([}\]])/g, '$1');
+  const o = JSON.parse(s);
+  const ex = (o.existentes || o.pendientes || []).map(x => ({n: String(x.n || '').replace(/\D/g, ''), estado: String(x.estado || '').toLowerCase(), add: (x.anadir || x['añadir'] || x.comentario || '').trim()})).filter(x => x.n);
+  const nu = (o.nuevos || []).map(x => ({text: String(x.texto || x.text || '').trim(), resp: String(x.responsable || '').trim(), plazo: String(x.plazo || '').trim()})).filter(x => x.text);
+  return {ex, nu};
+}
+async function pasteClaude(a){
+  let txt = ''; try { txt = await navigator.clipboard.readText(); } catch(e){}
+  const raw = await sheet((sh, close) => {
+    const ta = h('textarea',{class:'field ta', style:'min-height:34vh;font-size:13px', placeholder:'Pega aquí la respuesta de Claude'}); if(/\{[\s\S]*\}/.test(txt)) ta.value = txt;
+    sh.append(h('h2',{}, 'Respuesta de Claude'), ta, acts(h('button',{class:'btn', onclick:() => close(null)}, 'Cancelar'), h('button',{class:'btn pri', onclick:() => close(ta.value)}, 'Leer')));
+  });
+  if(!raw) return;
+  let R; try { R = parseClaude(raw); } catch(e){ toast('No pude leer la respuesta: ' + e.message, 6000); return; }
+  const ord = actaOrder(a);
+  const props = [];
+  for(const x of R.ex){ const p = ord[+x.n - 1]; if(!p) continue; const res = /resuel/.test(x.estado);
+    if(res === !!p.res && !x.add) continue;
+    props.push({on:true, label: pad2(+x.n) + (res !== !!p.res ? (res ? ' → Resuelto' : ' → Sigue pendiente') : '') + (x.add ? ' · añadir: ' + x.add : ''), apply: () => { if(p.pend || res) p.res = res; if(x.add) p.text = (p.text || '').trimEnd() + '\n' + x.add; }}); }
+  for(const x of R.nu) props.push({on:true, label:'Nuevo · ' + (x.resp || 'sin responsable') + ' · ' + x.text, apply: () => a.pts.push({id:uid(), text:x.text, resp:x.resp.toUpperCase(), plazo:x.plazo, imgs:[], pend:false, res:false, ia:true})});
+  if(!props.length){ toast('Claude no propone cambios', 4000); return; }
+  sheet((sh, close) => {
+    const list = h('div',{class:'menu', style:'max-height:56vh;overflow:auto'});
+    for(const pr of props){ const cb = h('input',{type:'checkbox', checked:true, style:'width:20px;height:20px;flex:none', onchange:() => pr.on = cb.checked});
+      list.append(h('label',{style:'display:flex;gap:10px;align-items:flex-start;padding:10px 4px;font-size:14px;line-height:1.35'}, cb, h('span',{style:'overflow-wrap:anywhere'}, pr.label))); }
+    sh.append(h('h2',{}, 'Propuesta de Claude (' + props.length + ')'), h('p',{}, 'Desmarca lo que no quieras. Después puedes editar cada punto.'), list,
+      acts(h('button',{class:'btn', onclick:() => close()}, 'Cancelar'),
+        h('button',{class:'btn pri', onclick:() => { let n = 0; for(const pr of props) if(pr.on){ pr.apply(); n++; } actaSave(); close(); renderActa(); toast(n + ' cambios añadidos al acta', 3500); }}, 'Añadir al acta')));
+  });
+}
 
 /* ---------- Chincheta en el plano: recorte con el punto marcado ---------- */
 async function pinOnPlan(a, label){
@@ -3429,7 +3587,7 @@ async function exportActa(){
 (async () => { await DB.open(); if(MS_ON) await msHandleRedirect(); refreshLib(); initPdf().catch(()=>{}); })();
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 /* Actualizaciones sin tener que cerrar la app */
-const APP_V = '2026.11.12-1';
+const APP_V = '2026.11.12-2';
 async function checkUpdate(manual){
   try {
     const r = await fetch('index.html?v=' + Date.now(), {cache:'no-store'}); if(!r.ok) throw 0;
