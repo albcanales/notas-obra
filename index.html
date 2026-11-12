@@ -3607,6 +3607,20 @@ async function pinOnPlan(a, label){
 }
 
 
+
+/* Compartir un archivo; si Android no deja (ZIP, Word…), se guarda en Descargas y se explica cómo enviarlo */
+function saveBlob(blob, name){ const a = h('a',{href:URL.createObjectURL(blob), download:name, hidden:true}); document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 1000); }
+async function shareOrSave(file, title){
+  try {
+    if(!(navigator.canShare && navigator.canShare({files:[file]}))) throw new Error('no');
+    await navigator.share({files:[file], title}); return true;
+  } catch(e){
+    if(e && e.name === 'AbortError') return false; // el usuario cerró la ventana de compartir
+    saveBlob(file, file.name);
+    toast('Este tipo de archivo no se puede enviar directamente. Lo he guardado en Descargas: ábrelo en «Mis archivos» → Descargas, mantenlo pulsado → Compartir → Quick Share (o adjúntalo en WhatsApp como Documento).', 9000);
+    return true;
+  }
+}
 /* ---------- Pasar un acta a otro dispositivo (archivo .zip con todo) ---------- */
 async function exportActaFile(a){
   const o = obras.find(x => x.id === a.obra) || {name:'Obra'};
@@ -3628,12 +3642,11 @@ async function exportActaFile(a){
     const file = new File([blob], name, {type:'application/zip'});
     b();
     sheet((sh, close) => {
-      const canShare = navigator.canShare && navigator.canShare({files:[file]});
       sh.append(h('h2',{}, 'Pasar a otro dispositivo'),
         h('p',{}, 'Envía este archivo a la tablet (o al móvil) por OneDrive, WhatsApp, Quick Share o correo. Allí, en Actas, pulsa «Importar acta de otro dispositivo» y sigue donde lo dejaste.'),
         h('p',{style:'overflow-wrap:anywhere;color:var(--muted);font-size:13px'}, name + ' · ' + (blob.size / 1048576).toFixed(1) + ' MB · ' + seen.size + ' imágenes'),
-        canShare ? h('button',{class:'btn wide pri', onclick:async () => { try { await navigator.share({files:[file], title:name}); close(); } catch(e){} }}, svgIcon('i-share'), 'Enviar…') : '',
-        h('a',{class:'btn wide', style:'margin-top:8px', href:URL.createObjectURL(blob), download:name, onclick:() => setTimeout(close, 300)}, svgIcon('i-pdf'), 'Guardar en el móvil'),
+        h('button',{class:'btn wide pri', onclick:async () => { if(await shareOrSave(file, name)) close(); }}, svgIcon('i-share'), 'Enviar…'),
+        h('button',{class:'btn wide', style:'margin-top:8px', onclick:() => { saveBlob(blob, name); toast('Guardado en Descargas', 3000); close(); }}, svgIcon('i-pdf'), 'Guardar en el móvil (Descargas)'),
         acts(h('button',{class:'btn', onclick:() => close()}, 'Cerrar')));
     });
   } catch(e){ b(); console.error(e); toast('No se pudo preparar: ' + (e.message || e), 6000); }
@@ -3691,10 +3704,9 @@ async function exportActa(){
   b(); a.gen = Date.now(); actaSave();
   const name = actaFileName(a, o); const file = new File([blob], name, {type: blob.type});
   sheet((sh, close) => {
-    const dl = h('a',{class:'btn wide', href: URL.createObjectURL(blob), download: name, onclick:() => setTimeout(close, 300)}, svgIcon('i-pdf'), 'Guardar en el móvil');
-    const canShare = navigator.canShare && navigator.canShare({files:[file]});
+    const dl = h('button',{class:'btn wide', onclick:() => { saveBlob(blob, name); toast('Guardado en Descargas', 3000); close(); }}, svgIcon('i-pdf'), 'Guardar en el móvil (Descargas)');
     sh.append(h('h2',{}, 'Acta Nº' + a.num + ' lista'), h('p',{style:'overflow-wrap:anywhere'}, name + ' · ' + actaOrder(a).length + ' puntos'),
-      canShare ? h('button',{class:'btn wide pri', onclick:async () => { try { await navigator.share({files:[file], title:name}); close(); } catch(e){} }}, svgIcon('i-share'), 'Compartir (correo, OneDrive, WhatsApp…)') : '',
+      h('button',{class:'btn wide pri', onclick:async () => { if(await shareOrSave(file, name)) close(); }}, svgIcon('i-share'), 'Compartir (correo, OneDrive, WhatsApp…)'),
       h('div',{style:'margin-top:8px'}, dl), acts(h('button',{class:'btn', onclick:() => close()}, 'Cerrar')));
   });
 }
@@ -3702,7 +3714,7 @@ async function exportActa(){
 (async () => { await DB.open(); if(MS_ON) await msHandleRedirect(); refreshLib(); initPdf().catch(()=>{}); })();
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 /* Actualizaciones sin tener que cerrar la app */
-const APP_V = '2026.11.12-4';
+const APP_V = '2026.11.12-5';
 async function checkUpdate(manual){
   try {
     const r = await fetch('index.html?v=' + Date.now(), {cache:'no-store'}); if(!r.ok) throw 0;
