@@ -320,7 +320,7 @@ body.selmode #lib{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
   <div id="recent"></div>
   <div class="grid" id="grid"></div>
   <div class="empty" id="empty" hidden><b>Aún no hay planos</b>Crea una obra con «+ Obra» e importa sus planos en PDF (puedes seleccionar muchos a la vez). Se clasifican solos por zona e instalación según el nombre del archivo.</div>
-  <div class="foot">Las notas se guardan en este dispositivo.<br><button class="linkbtn" id="bSpace">Espacio ocupado…</button><br><button class="linkbtn" id="bRevs" style="margin-top:6px" hidden>Buscar revisiones nuevas de planos</button><br><button class="linkbtn" id="bVer" style="margin-top:6px">Buscar actualización</button></div>
+  <div class="foot">Las notas se guardan en este dispositivo.<br><button class="linkbtn" id="bSpace">Espacio ocupado…</button><br><button class="linkbtn" id="bActaImp" style="margin-top:6px">Importar acta de otro dispositivo</button><br><button class="linkbtn" id="bRevs" style="margin-top:6px" hidden>Buscar revisiones nuevas de planos</button><br><button class="linkbtn" id="bVer" style="margin-top:6px">Buscar actualización</button></div>
   <input type="file" id="reIn" accept="application/pdf,.pdf" hidden>
   <input type="file" id="cadIn" hidden>
   <div id="selBar" hidden>
@@ -3288,6 +3288,7 @@ function actasSheet(o){
       mine.length ? list : '',
       o.actaTpl ? h('button',{class:'btn wide pri', style:'margin-top:10px', onclick:async () => { close(); const a = await newActa(o); openActa(a.id); }}, svgIcon('i-plus'), 'Nueva acta (Nº' + next + ')') : '',
       h('button',{class:'btn wide', style:'margin-top:8px', onclick:async () => { close(); if(await loadActaTpl(o)) actasSheet(o); }}, svgIcon('i-pdf'), o.actaTpl ? 'Cambiar plantilla (Word de la última acta)' : 'Cargar el Word de la última acta'),
+      h('button',{class:'btn wide', style:'margin-top:8px', onclick:() => { close(); importActaFile(o); }}, svgIcon('i-plus'), 'Importar acta de otro dispositivo'),
       acts(h('button',{class:'btn', onclick:() => close()}, 'Cerrar')));
   });
 }
@@ -3369,6 +3370,7 @@ function actaMenu(){
   const a = A;
   sheet((sh, close) => sh.append(h('h2',{}, 'Acta Nº' + a.num), h('div',{class:'menu'},
     h('button',{onclick:() => { close(); exportActa(); }}, svgIcon('i-share'), 'Generar Word'),
+    h('button',{onclick:() => { close(); exportActaFile(a); }}, svgIcon('i-share'), 'Pasar a otro dispositivo (tablet, móvil…)'),
     h('button',{onclick:async () => { close(); if(await confirmSheet('Eliminar acta', 'Se borra el acta Nº' + a.num + ' de este móvil. Los Word ya generados no se tocan.', 'Eliminar')){ actas = actas.filter(x => x !== a); await DB.del('notes', a.id); A = null; await closeActa(); gcActaImgs(); } }}, svgIcon('i-trash'), 'Eliminar acta')),
     acts(h('button',{class:'btn', onclick:() => close()}, 'Cerrar'))));
 }
@@ -3604,6 +3606,80 @@ async function pinOnPlan(a, label){
   });
 }
 
+
+/* ---------- Pasar un acta a otro dispositivo (archivo .zip con todo) ---------- */
+async function exportActaFile(a){
+  const o = obras.find(x => x.id === a.obra) || {name:'Obra'};
+  clearTimeout(aSaveT); await DB.put('notes', a.id, a);
+  const b = busy('Preparando el archivo…');
+  try {
+    const enc = new TextEncoder(), files = [], imgs = {}, seen = new Set();
+    for(const p of a.pts || []) for(const im of p.imgs || []){
+      if(seen.has(im.k)) continue; seen.add(im.k);
+      const rec = await DB.get('photos', im.k); if(!rec) continue;
+      imgs[im.k] = {w: rec.w, h: rec.h}; files.push(['img/' + im.k + '.jpg', new Uint8Array(rec.buf)]);
+    }
+    let tplName = '';
+    if(o.actaTpl){ const t = await DB.get('pdfs', o.actaTpl.id); if(t){ files.push(['plantilla.docx', new Uint8Array(t)]); tplName = o.actaTpl.name; } }
+    const meta = {tipo:'notas-obra-acta', v:1, enviado:Date.now(), obra:o.name, plantilla:tplName, imgs, acta:a};
+    files.unshift(['acta.json', enc.encode(JSON.stringify(meta))]);
+    const blob = zipStore(files, 'application/zip');
+    const name = 'ACTA' + a.num + '_' + o.name.replace(/[^\wÀ-ÿ\-]+/g, '_') + '_traspaso.zip';
+    const file = new File([blob], name, {type:'application/zip'});
+    b();
+    sheet((sh, close) => {
+      const canShare = navigator.canShare && navigator.canShare({files:[file]});
+      sh.append(h('h2',{}, 'Pasar a otro dispositivo'),
+        h('p',{}, 'Envía este archivo a la tablet (o al móvil) por OneDrive, WhatsApp, Quick Share o correo. Allí, en Actas, pulsa «Importar acta de otro dispositivo» y sigue donde lo dejaste.'),
+        h('p',{style:'overflow-wrap:anywhere;color:var(--muted);font-size:13px'}, name + ' · ' + (blob.size / 1048576).toFixed(1) + ' MB · ' + seen.size + ' imágenes'),
+        canShare ? h('button',{class:'btn wide pri', onclick:async () => { try { await navigator.share({files:[file], title:name}); close(); } catch(e){} }}, svgIcon('i-share'), 'Enviar…') : '',
+        h('a',{class:'btn wide', style:'margin-top:8px', href:URL.createObjectURL(blob), download:name, onclick:() => setTimeout(close, 300)}, svgIcon('i-pdf'), 'Guardar en el móvil'),
+        acts(h('button',{class:'btn', onclick:() => close()}, 'Cerrar')));
+    });
+  } catch(e){ b(); console.error(e); toast('No se pudo preparar: ' + (e.message || e), 6000); }
+}
+async function importActaFile(target){
+  const f = await new Promise(res => { const inp = h('input',{type:'file', accept:'.zip,application/zip', hidden:true});
+    inp.onchange = () => { res(inp.files[0] || null); inp.remove(); }; document.body.appendChild(inp); inp.click(); });
+  if(!f) return;
+  const b = busy('Leyendo el acta…'); let files, meta;
+  try { files = await docxOpen(await f.arrayBuffer()); meta = JSON.parse(u8txt(files.get('acta.json') || new Uint8Array()));
+    if(meta.tipo !== 'notas-obra-acta' || !meta.acta) throw 0; }
+  catch(e){ b(); toast('Ese archivo no es un acta pasada desde Notas de obra', 5000); return; }
+  b();
+  // obra: la del mismo nombre; si no existe, la elegida o una nueva
+  let o = obras.find(x => normTxt(x.name) === normTxt(meta.obra));
+  if(!o && target){
+    const ch = await sheet((sh, close) => sh.append(h('h2',{}, 'Obra del acta'), h('p',{}, 'El acta es de la obra «' + meta.obra + '», que no existe en este dispositivo.'),
+      h('div',{class:'menu'}, h('button',{onclick:() => close('t')}, 'Añadirla a «' + target.name + '»'), h('button',{onclick:() => close('n')}, 'Crear la obra «' + meta.obra + '»')),
+      acts(h('button',{class:'btn', onclick:() => close(null)}, 'Cancelar'))));
+    if(!ch) return; if(ch === 't') o = target;
+  }
+  if(!o){ o = {id:'obra_' + uid(), kind:'obra', name:meta.obra || 'Obra', dalux:'', updated:Date.now()}; await DB.put('notes', o.id, o); }
+  const a = meta.acta;
+  const mine = actas.find(x => x.id === a.id);
+  if(mine){
+    const hh = t => new Date(t).toLocaleString('es-ES', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
+    const ch = await sheet((sh, close) => sh.append(h('h2',{}, 'Acta Nº' + a.num + ' ya está aquí'),
+      h('p',{}, 'La de este dispositivo es del ' + hh(mine.updated) + '; la recibida, del ' + hh(a.updated) + '.' + (mine.updated > a.updated ? ' ¡Ojo: la de aquí es más reciente!' : '')),
+      h('div',{class:'menu'}, h('button',{onclick:() => close('r')}, 'Sustituirla por la recibida'), h('button',{onclick:() => close('c')}, 'Guardar la recibida como copia')),
+      acts(h('button',{class:'btn', onclick:() => close(null)}, 'Cancelar'))));
+    if(!ch) return;
+    if(ch === 'c') a.id = 'acta_' + uid();
+  }
+  const b2 = busy('Guardando…');
+  try {
+    for(const [k, d] of Object.entries(meta.imgs || {})){ const u = files.get('img/' + k + '.jpg'); if(u) await DB.put('photos', k, {buf: u.slice().buffer, w: d.w, h: d.h}); }
+    const tpl = files.get('plantilla.docx');
+    if(tpl && !o.actaTpl){ const id = 'tpl_' + uid(); await DB.put('pdfs', id, tpl.slice().buffer); o.actaTpl = {id, name: meta.plantilla || 'plantilla.docx'}; }
+    o.updated = Date.now(); await DB.put('notes', o.id, o);
+    a.obra = o.id; a.kind = 'acta'; await DB.put('notes', a.id, a);
+    await refreshLib(); b2();
+    selObra(o.id); toast('Acta Nº' + a.num + ' importada' + (o.actaTpl ? '' : ' (falta la plantilla para generar el Word)'), 4000);
+    openActa(a.id);
+  } catch(e){ b2(); console.error(e); toast('No se pudo importar: ' + (e.message || e), 6000); }
+}
+
 /* ---------- Generar y compartir el Word ---------- */
 async function exportActa(){
   const a = A; const o = obras.find(x => x.id === a.obra);
@@ -3626,7 +3702,7 @@ async function exportActa(){
 (async () => { await DB.open(); if(MS_ON) await msHandleRedirect(); refreshLib(); initPdf().catch(()=>{}); })();
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 /* Actualizaciones sin tener que cerrar la app */
-const APP_V = '2026.11.12-3';
+const APP_V = '2026.11.12-4';
 async function checkUpdate(manual){
   try {
     const r = await fetch('index.html?v=' + Date.now(), {cache:'no-store'}); if(!r.ok) throw 0;
@@ -3643,6 +3719,7 @@ function showUpdate(){
 }
 window.addEventListener('load', () => { setTimeout(() => checkUpdate(false), 1500); const vb = $('#bVer'); if(vb){ vb.textContent = 'Versión ' + APP_V + ' · Buscar actualización'; vb.onclick = () => checkUpdate(true); } });
 document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible'){ checkUpdate(false); setTimeout(() => checkRevs(false), 2500); } });
+$('#bActaImp').onclick = () => importActaFile(obras.find(x => x.id === curObra) || null);
 if(MS_ON){ const br = $('#bRevs'); if(br){ br.hidden = false; br.onclick = () => checkRevs(true); } setTimeout(() => checkRevs(false), 4000); }
 // Pedir almacenamiento persistente para que el sistema no borre las notas
 if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
