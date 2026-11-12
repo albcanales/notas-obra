@@ -3621,7 +3621,34 @@ async function shareOrSave(file, title){
     return true;
   }
 }
-/* ---------- Pasar un acta a otro dispositivo (archivo .zip con todo) ---------- */
+/* ---------- Pasar un acta a otro dispositivo ----------
+   Android no deja compartir ZIP desde una web, pero sí PDF: el traspaso es un PDF con el resumen
+   del acta y, dentro (como archivo adjunto del PDF), el ZIP con todos los datos. */
+async function wrapActaPdf(a, o, zipBytes){
+  const {PDFDocument, StandardFonts, rgb} = PDFLib;
+  const doc = await PDFDocument.create(); const f = await doc.embedFont(StandardFonts.Helvetica), fb = await doc.embedFont(StandardFonts.HelveticaBold);
+  const safe = (ft, t) => [...String(t)].map(ch => { try { ft.encodeText(ch); return ch; } catch(_){ return ch === '→' ? '>' : '?'; } }).join('');
+  let pg = doc.addPage([595.28, 841.89]), y = 795; const W = 515;
+  const put = (t, size = 10, font = f, col = rgb(.15,.16,.2), indent = 0) => {
+    for(const par of String(t || '').split('\n')){
+      let cur = '';
+      const flush = () => { if(y < 50){ pg = doc.addPage([595.28, 841.89]); y = 795; } pg.drawText(cur, {x:40 + indent, y, size, font, color:col}); y -= size * 1.38; cur = ''; };
+      for(const w of safe(font, par).split(' ')){ const nx = cur ? cur + ' ' + w : w; if(font.widthOfTextAtSize(nx, size) > W - indent && cur){ flush(); cur = w; } else cur = nx; }
+      flush();
+    }
+  };
+  put('Notas de obra · traspaso de acta', 9, f, rgb(.45,.47,.52));
+  y -= 10;
+  put('ACTA Nº' + a.num + ' · ' + o.name, 17, fb); y -= 2;
+  put(fechaVisita(a.fecha) + ' · ' + horaTxt(a.hora) + (a.tema ? ' · ' + a.tema : ''), 10.5, f, rgb(.3,.32,.36)); y -= 8;
+  put('Para seguir con esta acta en otro dispositivo: en Notas de obra pulsa «Importar acta de otro dispositivo» y elige este PDF. Dentro van todos los datos (puntos, fotos, recortes de plano, transcripción y plantilla del Word).', 9.5, f, rgb(.85,.33,.06)); y -= 10;
+  actaOrder(a).forEach((p, i) => { put(pad2(i + 1) + '   ' + (p.resp || 'Sin responsable') + (p.plazo ? ' · ' + p.plazo : '') + (p.res ? ' · RESUELTO' : '') + ((p.imgs || []).length ? ' · ' + p.imgs.length + ' imagen(es)' : ''), 10.5, fb); put(p.text || '', 10, f, rgb(.15,.16,.2), 22); y -= 5; });
+  const now = new Date();
+  await doc.attach(zipBytes, 'acta-notas-obra.zip', {mimeType:'application/zip', description:'Datos del acta para Notas de obra', creationDate:now, modificationDate:now});
+  doc.setTitle('Acta Nº' + a.num + ' · ' + o.name + ' (traspaso)');
+  return await doc.save();
+}
+
 async function exportActaFile(a){
   const o = obras.find(x => x.id === a.obra) || {name:'Obra'};
   clearTimeout(aSaveT); await DB.put('notes', a.id, a);
@@ -3637,13 +3664,14 @@ async function exportActaFile(a){
     if(o.actaTpl){ const t = await DB.get('pdfs', o.actaTpl.id); if(t){ files.push(['plantilla.docx', new Uint8Array(t)]); tplName = o.actaTpl.name; } }
     const meta = {tipo:'notas-obra-acta', v:1, enviado:Date.now(), obra:o.name, plantilla:tplName, imgs, acta:a};
     files.unshift(['acta.json', enc.encode(JSON.stringify(meta))]);
-    const blob = zipStore(files, 'application/zip');
-    const name = 'ACTA' + a.num + '_' + o.name.replace(/[^\wÀ-ÿ\-]+/g, '_') + '_traspaso.zip';
-    const file = new File([blob], name, {type:'application/zip'});
+    const zipBytes = new Uint8Array(await zipStore(files, 'application/zip').arrayBuffer());
+    const blob = new Blob([await wrapActaPdf(a, o, zipBytes)], {type:'application/pdf'});
+    const name = 'ACTA' + a.num + '_' + o.name.replace(/[^\wÀ-ÿ\-]+/g, '_') + '_traspaso.pdf';
+    const file = new File([blob], name, {type:'application/pdf'});
     b();
     sheet((sh, close) => {
       sh.append(h('h2',{}, 'Pasar a otro dispositivo'),
-        h('p',{}, 'Envía este archivo a la tablet (o al móvil) por OneDrive, WhatsApp, Quick Share o correo. Allí, en Actas, pulsa «Importar acta de otro dispositivo» y sigue donde lo dejaste.'),
+        h('p',{}, 'Pulsa «Enviar» y elige Quick Share (o WhatsApp, correo…). En el otro dispositivo, en Notas de obra, pulsa «Importar acta de otro dispositivo», elige el PDF recibido (suele estar en Descargas) y sigue donde lo dejaste.'),
         h('p',{style:'overflow-wrap:anywhere;color:var(--muted);font-size:13px'}, name + ' · ' + (blob.size / 1048576).toFixed(1) + ' MB · ' + seen.size + ' imágenes'),
         h('button',{class:'btn wide pri', onclick:async () => { if(await shareOrSave(file, name)) close(); }}, svgIcon('i-share'), 'Enviar…'),
         h('button',{class:'btn wide', style:'margin-top:8px', onclick:() => { saveBlob(blob, name); toast('Guardado en Descargas', 3000); close(); }}, svgIcon('i-pdf'), 'Guardar en el móvil (Descargas)'),
@@ -3652,11 +3680,17 @@ async function exportActaFile(a){
   } catch(e){ b(); console.error(e); toast('No se pudo preparar: ' + (e.message || e), 6000); }
 }
 async function importActaFile(target){
-  const f = await new Promise(res => { const inp = h('input',{type:'file', accept:'.zip,application/zip', hidden:true});
+  const f = await new Promise(res => { const inp = h('input',{type:'file', accept:'.pdf,.zip,application/pdf,application/zip', hidden:true});
     inp.onchange = () => { res(inp.files[0] || null); inp.remove(); }; document.body.appendChild(inp); inp.click(); });
   if(!f) return;
   const b = busy('Leyendo el acta…'); let files, meta;
-  try { files = await docxOpen(await f.arrayBuffer()); meta = JSON.parse(u8txt(files.get('acta.json') || new Uint8Array()));
+  try {
+    let bytes = new Uint8Array(await f.arrayBuffer());
+    if(bytes[0] === 0x25 && bytes[1] === 0x50){ // %P: es un PDF de traspaso → sacar el ZIP de dentro
+      const pdf = await loadPdf(bytes.buffer); const att = await pdf.getAttachments(); try { pdf.destroy(); } catch(e){}
+      const z = att && Object.values(att).find(x => /\.zip$/i.test(x.filename || '')); if(!z) throw 0; bytes = z.content;
+    }
+    files = await docxOpen(bytes); meta = JSON.parse(u8txt(files.get('acta.json') || new Uint8Array()));
     if(meta.tipo !== 'notas-obra-acta' || !meta.acta) throw 0; }
   catch(e){ b(); toast('Ese archivo no es un acta pasada desde Notas de obra', 5000); return; }
   b();
@@ -3714,7 +3748,7 @@ async function exportActa(){
 (async () => { await DB.open(); if(MS_ON) await msHandleRedirect(); refreshLib(); initPdf().catch(()=>{}); })();
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 /* Actualizaciones sin tener que cerrar la app */
-const APP_V = '2026.11.12-5';
+const APP_V = '2026.11.12-6';
 async function checkUpdate(manual){
   try {
     const r = await fetch('index.html?v=' + Date.now(), {cache:'no-store'}); if(!r.ok) throw 0;
