@@ -3326,7 +3326,6 @@ function renderActa(){
     h('div',{class:'att'}, h('b',{}, 'Acta Nº' + a.num), sub),
     h('button',{class:'ib', title:'Más', onclick:actaMenu}, svgIcon('i-more'))));
   const body = h('div',{class:'abody'});
-  body.append(h('div',{id:'lsBar', class:'lsbar', hidden:true}, h('span',{class:'lsdot'}), h('b',{id:'lsTime'}, '00:00'), h('span',{id:'lsText'}, 'Escuchando…'), h('button',{class:'btn', onclick:listenStop}, 'Parar')));
   // Datos
   body.append(h('details',{class:'asec'}, h('summary',{}, 'Datos de la visita'),
     h('div',{class:'agrid'}, fld('Nº', (() => { const e = h('input',{class:'field', type:'number', inputmode:'numeric'}); e.value = a.num; e.oninput = () => { a.num = +e.value || a.num; actaSave(); }; return e; })()),
@@ -3339,15 +3338,6 @@ function renderActa(){
   body.append(h('details',{class:'asec'}, h('summary',{}, 'Asistentes (' + (a.asis || []).length + ')'), asis,
     h('button',{class:'linkbtn', onclick:() => editAsis(-1)}, '+ Añadir fila de asistentes')));
   // Puntos
-  // Reunión: escuchar y Claude
-  const nl = (a.trans || '').split('\n').filter(l => /^\[/.test(l)).length;
-  body.append(h('div',{class:'asec areu'},
-    h('div',{class:'areuh'}, h('b',{}, 'Reunión'), h('small',{}, nl ? nl + ' frases transcritas' : 'Sin transcripción')),
-    h('div',{class:'abtns'},
-      LS.on ? h('button',{class:'btn danger', onclick:listenStop}, svgIcon('i-x'), 'Parar') : h('button',{class:'btn', onclick:() => listenStart(a)}, svgIcon('i-mic'), 'Escuchar'),
-      nl ? h('button',{class:'btn', onclick:() => transSheet(a)}, svgIcon('i-text'), 'Ver texto') : '',
-      h('button',{class:'btn', onclick:() => sendToClaude(a)}, svgIcon('i-share'), 'Pasar a Claude'),
-      h('button',{class:'btn', onclick:() => pasteClaude(a)}, svgIcon('i-plus'), 'Pegar respuesta'))));
   const ord = actaOrder(a); const pend = ord.filter(p => p.pend), nuevos = ord.filter(p => !p.pend);
   const card = (p, n) => {
     const th = h('div',{class:'athumbs'});
@@ -3361,7 +3351,6 @@ function renderActa(){
   if(pend.length) body.append(h('h3',{class:'ah'}, 'Pendientes del acta anterior (' + pend.length + ')'), ...pend.map(p => card(p, ++n)));
   body.append(h('h3',{class:'ah'}, 'Puntos nuevos (' + nuevos.length + ')'), ...nuevos.map(p => card(p, ++n)),
     nuevos.length ? '' : h('p',{style:'color:var(--muted);font-size:13px;margin:4px 2px'}, 'Pulsa «Nuevo punto» para añadir lo que se trate en la visita.'));
-  setTimeout(listenUI, 0);
   root.append(body, h('div',{class:'afoot'},
     h('button',{class:'btn', onclick:exportActa}, svgIcon('i-share'), 'Generar Word'),
     h('button',{class:'btn pri', onclick:() => { const p = {id:uid(), text:'', resp:'', plazo:'', imgs:[], pend:false, res:false}; editPoint(p, true); }}, svgIcon('i-plus'), 'Nuevo punto')));
@@ -3371,6 +3360,8 @@ function actaMenu(){
   sheet((sh, close) => sh.append(h('h2',{}, 'Acta Nº' + a.num), h('div',{class:'menu'},
     h('button',{onclick:() => { close(); exportActa(); }}, svgIcon('i-share'), 'Generar Word'),
     h('button',{onclick:() => { close(); exportActaFile(a); }}, svgIcon('i-share'), 'Pasar a otro dispositivo (tablet, móvil…)'),
+    h('button',{onclick:() => { close(); sendToClaude(a); }}, svgIcon('i-share'), 'Pasar a Claude para redactar'),
+    h('button',{onclick:() => { close(); pasteClaude(a); }}, svgIcon('i-plus'), 'Pegar respuesta de Claude'),
     h('button',{onclick:async () => { close(); if(await confirmSheet('Eliminar acta', 'Se borra el acta Nº' + a.num + ' de este móvil. Los Word ya generados no se tocan.', 'Eliminar')){ actas = actas.filter(x => x !== a); await DB.del('notes', a.id); A = null; await closeActa(); gcActaImgs(); } }}, svgIcon('i-trash'), 'Eliminar acta')),
     acts(h('button',{class:'btn', onclick:() => close()}, 'Cerrar'))));
 }
@@ -3486,7 +3477,7 @@ function claudePrompt(a){
   const o = obras.find(x => x.id === a.obra) || {name:''};
   const ord = actaOrder(a);
   const lines = [];
-  lines.push('Ayúdame a redactar los puntos del acta de obra a partir de la transcripción de la reunión.');
+  lines.push('Ayúdame a redactar los puntos del acta de obra' + ((a.trans || '').trim() ? ' a partir de la transcripción de la reunión.' : ': pásalos a limpio con estilo de acta, sin cambiar su contenido.'));
   lines.push('');
   lines.push('OBRA: ' + o.name + ' · ACTA Nº' + a.num + ' · ' + fechaVisita(a.fecha) + ' · ' + (a.tema || ''));
   lines.push('ASISTENTES:'); for(const s of a.asis || []) lines.push('- ' + s.rol + ': ' + s.nom + (s.emp ? ' (' + s.emp + ')' : ''));
@@ -3494,9 +3485,7 @@ function claudePrompt(a){
   lines.push('PUNTOS QUE YA ESTÁN EN EL ACTA (los primeros vienen del acta anterior como pendientes):');
   ord.forEach((p, i) => lines.push(pad2(i + 1) + (p.pend ? ' [pendiente]' : ' [nuevo]') + (p.res ? ' [RESUELTO]' : '') + ' · ' + (p.resp || 'sin responsable') + ' · ' + (p.text || '').replace(/\n+/g, ' / ')));
   lines.push('');
-  lines.push('TRANSCRIPCIÓN (automática, puede tener errores; varias personas hablando):');
-  lines.push((a.trans || '(sin transcripción)').trim());
-  lines.push('');
+  if((a.trans || '').trim()){ lines.push('TRANSCRIPCIÓN (automática, puede tener errores; varias personas hablando):'); lines.push(a.trans.trim()); lines.push(''); }
   lines.push('INSTRUCCIONES:');
   lines.push('- Para cada punto ya existente del que se haya hablado, di si queda resuelto o sigue pendiente, y si hace falta añadir algo (una frase corta).');
   lines.push('- Propón los puntos nuevos que salgan de la reunión. Redacta en estilo de acta de obra: frases cortas, impersonales y concretas (qué hay que hacer, dónde y quién), sin nombres de personas, con el responsable como EMPRESA en mayúsculas (usa las empresas de los asistentes o TODOS).');
@@ -3509,7 +3498,6 @@ function claudePrompt(a){
   return lines.join('\n');
 }
 async function sendToClaude(a){
-  if(!(a.trans || '').trim() && !(await confirmSheet('Sin transcripción', 'Esta acta no tiene transcripción. ¿Quieres pasar igualmente el acta a Claude?', 'Seguir', 'pri'))) return;
   const txt = claudePrompt(a);
   let copied = false; try { await navigator.clipboard.writeText(txt); copied = true; } catch(e){}
   sheet((sh, close) => sh.append(h('h2',{}, 'Pasar a Claude'),
@@ -3781,7 +3769,7 @@ async function exportActa(){
 (async () => { await DB.open(); if(MS_ON) await msHandleRedirect(); refreshLib(); initPdf().catch(()=>{}); handleShared().catch(e => console.error(e)); })();
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 /* Actualizaciones sin tener que cerrar la app */
-const APP_V = '2026.11.12-7';
+const APP_V = '2026.11.12-8';
 async function checkUpdate(manual){
   try {
     const r = await fetch('index.html?v=' + Date.now(), {cache:'no-store'}); if(!r.ok) throw 0;
